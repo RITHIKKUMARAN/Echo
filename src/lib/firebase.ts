@@ -4,13 +4,19 @@ import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyC88Eau0Kd94gi-JUyyk7p6BGfX2TL8YQ4",
-    authDomain: "echo-1928rn.firebaseapp.com",
-    projectId: "echo-1928rn",
-    storageBucket: "echo-1928rn.firebasestorage.app",
-    messagingSenderId: "172082260714",
-    appId: "1:172082260714:web:02874136f8f533a1e1b123"
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyC88Eau0Kd94gi-JUyyk7p6BGfX2TL8YQ4",
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "echo-1928rn.firebaseapp.com",
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "echo-1928rn",
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "echo-1928rn.firebasestorage.app",
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "1071232973102",
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:1071232973102:web:3cf6c11fcf8063f929a2bf"
 };
+
+// Validate configuration
+if (!firebaseConfig.apiKey || firebaseConfig.apiKey === 'undefined') {
+    console.error('Firebase configuration is missing! Check .env.local file');
+    console.log('Current config:', firebaseConfig);
+}
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();

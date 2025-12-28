@@ -1,29 +1,60 @@
-const API_BASE_URL = 'http://127.0.0.1:5001/echo-1928rn/us-central1/api';
+import axios from 'axios';
+import { getAuth } from 'firebase/auth';
+import { initializeApp, getApps } from 'firebase/app';
 
-export const apiRequest = async (endpoint: string, method: string = 'GET', body?: any, token?: string) => {
-    const headers: HeadersInit = {
+// Setup Firebase Client (ensure it matches your firebase.json / env)
+const firebaseConfig = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+
+if (!getApps().length) {
+    initializeApp(firebaseConfig);
+}
+
+const auth = getAuth();
+
+// API Client
+const api = axios.create({
+    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/echo-1928rn/us-central1/api', // Fallback to emulator
+    headers: {
         'Content-Type': 'application/json',
-    };
+    },
+});
 
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+// Request Interceptor: Attach Token
+api.interceptors.request.use(async (config) => {
+    const user = auth.currentUser;
+    if (user) {
+        const token = await user.getIdToken();
+        config.headers.Authorization = `Bearer ${token}`;
     }
+    return config;
+}, (error) => {
+    return Promise.reject(error);
+});
 
+// Compat wrapper for legacy code
+export const apiRequest = async (endpoint: string, method: string, body?: any, token?: string) => {
     try {
-        const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method,
-            headers,
-            body: body ? JSON.stringify(body) : undefined,
-        });
-
-        if (!res.ok) {
-            const error = await res.json();
-            throw new Error(error.error || 'API Request Failed');
+        const config: any = {
+            method: method,
+            url: endpoint,
+            data: body,
+            headers: {}
+        };
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
         }
-
-        return res.json();
-    } catch (error) {
-        console.error(`API Error [${endpoint}]:`, error);
-        throw error;
+        const response = await api(config);
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.error ? new Error(error.response.data.error) : error;
     }
 };
+
+export default api;

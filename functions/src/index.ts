@@ -25,8 +25,6 @@ app.use('/doubts', doubtRoutes);
 app.use('/sessions', sessionRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/upload', uploadRoutes);
-app.use('/sessions', sessionRoutes);
-app.use('/analytics', analyticsRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -38,4 +36,6 @@ export const api = functions.https.onRequest(app);
 
 // Export Triggers
 export * from './triggers/storageTriggers';
+export * from './triggers/scheduledTriggers';
+
 

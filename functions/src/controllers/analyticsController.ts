@@ -33,3 +33,47 @@ export const getProfessorAnalytics = async (req: Request, res: Response) => {
         return res.status(500).json({ error: 'Internal Server Error' });
     }
 };
+
+export const exportAnalyticsToSheet = async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.body;
+        // 1. Fetch Data (Reuse logic)
+        const doubtsSnap = await db.collection('doubts').where('courseId', '==', courseId).get();
+        const stats = doubtsSnap.docs.map(d => {
+            const data = d.data();
+            return [data.doubtId, data.status, data.createdAt.toDate().toISOString()];
+        });
+
+        // 2. Google Sheets API
+        const { google } = require('googleapis');
+        const auth = new google.auth.GoogleAuth({
+            scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+        const authClient = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: authClient });
+
+        // Create new sheet
+        const spreadSheet = await sheets.spreadsheets.create({
+            requestBody: {
+                properties: { title: `Analytics - Course ${courseId}` }
+            }
+        });
+        const spreadsheetId = spreadSheet.data.spreadsheetId;
+
+        // Write Data
+        await sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range: 'Sheet1!A1',
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+                values: [['Doubt ID', 'Status', 'Date'], ...stats]
+            }
+        });
+
+        return res.json({ message: 'Export successful', spreadsheetUrl: spreadSheet.data.spreadsheetUrl });
+
+    } catch (error: any) {
+        console.error('Export Error:', error);
+        return res.status(500).json({ error: error.message });
+    }
+};

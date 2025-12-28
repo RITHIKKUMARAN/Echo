@@ -10,7 +10,7 @@ export const syncUser = async (req: Request, res: Response) => {
         }
 
         const { uid, email, name, picture } = user;
-        const { department, academicYear, role } = req.body;
+        const { department, academicYear } = req.body;
 
         const userRef = db.collection('users').doc(uid);
         const userSnap = await userRef.get();
@@ -23,7 +23,10 @@ export const syncUser = async (req: Request, res: Response) => {
                 photoUrl: picture || '',
                 department: department || '',
                 academicYear: academicYear || '',
-                role: role || 'student',
+
+                // Auto-assign role based on email pattern or default to student
+                // Security: Prevent users from claiming 'professor' role arbitrarily
+                role: (email.includes('faculty') || email.includes('prof')) ? 'professor' : 'student',
                 createdAt: new Date().toISOString()
             };
             await userRef.set(newUser);

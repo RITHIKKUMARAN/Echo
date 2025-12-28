@@ -49,15 +49,16 @@ export const sendMessage = async (req: Request, res: Response) => {
 
         // 2. RAG Retrieval
         let contextText = '';
+        let sources: string[] = [];
+
         if (courseId) {
-            // Find relevant chunks from Firestore using basic exact match or retrieve all (for MVP)
-            // Ideally we use Vector Search here. For MVP, let's grab the first few chunks or last uploaded.
-            // Simplified: Grab first 5 chunks of the course.
-            // TODO: Implement Vector Search using Vertex AI Vector Search
             try {
-                const chunksSnap = await db.collection('courses').doc(courseId).collection('chunks').limit(5).get();
-                if (!chunksSnap.empty) {
-                    contextText = chunksSnap.docs.map(doc => doc.data().text).join('\n\n');
+                // Perform Semantic Search without Vector DB infrastructure overhead for this layer
+                const relevantChunks = await vertexService.searchSimilarChunks(message, courseId, 4);
+
+                if (relevantChunks.length > 0) {
+                    contextText = relevantChunks.map((chunk: any) => chunk.text).join('\n---\n');
+                    sources = relevantChunks.map((c: any) => c.metadata?.source || 'Course Material').filter((v: string, i: number, a: string[]) => a.indexOf(v) === i);
                 }
             } catch (err) {
                 console.warn("RAG Retrieval warning:", err);
@@ -66,14 +67,18 @@ export const sendMessage = async (req: Request, res: Response) => {
 
         // 3. Generate AI Response
         const prompt = `
-        You are an AI tutor acting as a "Neural Notebook".
-        Answer based on the following context if available.
+        You are an AI tutor acting as a "Neural Notebook" for a specific course.
+        Answer the user's question based strictly on the provided context.
         
-        ${contextText ? `CONTEXT FROM COURSE MATERIALS:\n${contextText}\n` : ''}
+        CONTEXT FROM COURSE MATERIALS:
+        ${contextText || "No specific course materials found containing the answer."}
         
-        User asking: "${message}"
+        USER QUESTION: "${message}"
         
-        Answer helpfully, concisely, and accurately.
+        INSTRUCTIONS:
+        - If the answer is in the context, be precise and cite the reasoning.
+        - If the answer is NOT in the context, say "I couldn't find this in the course materials, but here is a general answer..." and provide a general answer.
+        - Keep the tone encouraging and academic.
         `;
 
         const aiResponse = await vertexService.generateContent(prompt);
@@ -90,7 +95,11 @@ export const sendMessage = async (req: Request, res: Response) => {
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        return res.json({ response: aiResponse, messages: [userMsg, aiMsg] });
+        return res.json({
+            response: aiResponse,
+            messages: [userMsg, aiMsg],
+            sources: sources
+        });
 
     } catch (error: any) {
         console.error('Send Message Error:', error);

@@ -1,6 +1,6 @@
 
 import { Request, Response, NextFunction } from 'express';
-// import { auth } from '../config/firebase'; // Temporarily disabled
+import * as admin from 'firebase-admin';
 
 export interface AuthRequest extends Request {
     user?: any;
@@ -16,36 +16,28 @@ export const validateToken = async (req: Request, res: Response, next: NextFunct
 
         const token = authHeader.split('Bearer ')[1];
 
-        // TEMPORARY: Bypass token validation in emulator mode
-        // Create a mock user from the token payload (it's a JWT)
-        try {
-            const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-            (req as AuthRequest).user = {
-                uid: payload.user_id || payload.sub || 'test_user_id',
-                email: payload.email || 'test@example.com',
-                name: payload.name || 'Test User'
-            };
-            console.log('[EMULATOR MODE] Bypassed token validation for user:', (req as AuthRequest).user?.email);
-            next();
-            return;
-        } catch (decodeError) {
-            // If decode fails, still pass with mock user for testing
-            (req as AuthRequest).user = {
-                uid: 'test_user_id',
-                email: 'test@example.com',
-                name: 'Test User'
-            };
-            console.log('[EMULATOR MODE] Using fallback mock user');
-            next();
-            return;
+        // 1. Verify ID Token
+        const decodedToken = await admin.auth().verifyIdToken(token);
+
+        // 2. Enforce College Email (e.g., .edu or specific domain)
+        // For now, we enforce that it MUST NOT be a generic gmail/yahoo/hotmail
+        // You can make this stricter by verifying it ends with '.edu' or 'university.ac.in'
+        const email = decodedToken.email || '';
+        const forbiddenDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];
+        const domain = email.split('@')[1];
+
+        if (!email || forbiddenDomains.includes(domain)) {
+            // OPTIONAL: Allow if it's a specific admin override, otherwise block
+            return res.status(403).json({
+                error: 'Access Denied: Please use your college/university email address.',
+                details: `The domain @${domain} is not permitted.`
+            });
         }
 
-        /* PRODUCTION TOKEN VALIDATION (TEMPORARILY DISABLED)
-        const decodedToken = await auth.verifyIdToken(token);
         (req as AuthRequest).user = decodedToken;
         next();
         return;
-        */
+
     } catch (error) {
         console.error('Auth Error:', error);
         return res.status(401).json({ error: 'Unauthorized: Invalid token' });

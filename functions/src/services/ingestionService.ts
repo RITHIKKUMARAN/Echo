@@ -1,6 +1,10 @@
 import * as admin from 'firebase-admin';
 import { db } from '../config/firebase';
 import { vertexService } from './vertexService';
+import { DocumentProcessorServiceClient } from '@google-cloud/documentai';
+
+// Initialize Document AI Client
+const client = new DocumentProcessorServiceClient();
 
 interface Chunk {
     id: string;
@@ -10,72 +14,115 @@ interface Chunk {
     embedding: number[];
 }
 
+// Helper: Token-aware chunking
+// Splits text into chunks of roughly ~500 words/tokens with overlap
+const chunkText = (text: string, chunkSize: number = 2000, overlap: number = 200): string[] => {
+    // Simple character-based chunking as a proxy for tokens (approx 4 chars/token -> 500 tokens ~ 2000 chars)
+    const chunks: string[] = [];
+    let start = 0;
+
+    while (start < text.length) {
+        const end = Math.min(start + chunkSize, text.length);
+        let chunk = text.slice(start, end);
+
+        // Try to break at the last period or newline to be semantically cleaner
+        const lastPeriod = chunk.lastIndexOf('.');
+        if (lastPeriod > chunkSize * 0.8 && end < text.length) {
+            chunk = chunk.slice(0, lastPeriod + 1);
+            start += (lastPeriod + 1) - overlap;
+        } else {
+            start += chunkSize - overlap;
+        }
+
+        if (chunk.trim().length > 50) {
+            chunks.push(chunk.trim());
+        }
+    }
+    return chunks;
+};
+
+// Helper: Document AI Extraction
+const extractTextWithDocAI = async (buffer: Buffer, mimeType: string): Promise<string> => {
+    try {
+        const projectId = process.env.GCP_PROJECT_ID || 'echo-1928rn';
+        const location = 'us'; // Format: 'us' or 'eu'
+        const processorId = process.env.DOCAI_PROCESSOR_ID || 'c01e56b43729863c'; // Replace with env var
+
+        if (!processorId) throw new Error('DOCAI_PROCESSOR_ID not configured');
+
+        const name = `projects/${projectId}/locations/${location}/processors/${processorId}`;
+        const request = {
+            name,
+            rawDocument: {
+                content: buffer.toString('base64'),
+                mimeType: mimeType,
+            },
+        };
+
+        const [result] = await client.processDocument(request);
+        const { document } = result;
+        return document?.text || '';
+    } catch (error) {
+        console.error('Document AI Error, falling back to simple extraction:', error);
+        throw error;
+    }
+};
+
 export const processMaterial = async (courseId: string, materialId: string, gcsPath: string, mimeType: string) => {
     try {
         console.log(`Starting ingestion for ${materialId}`);
         const materialRef = db.collection('courses').doc(courseId).collection('materials').doc(materialId);
 
-        // 1. Download file content (simplified for text/pdf)
+        // 1. Download file content
         const bucket = admin.storage().bucket();
         const file = bucket.file(gcsPath);
         const [buffer] = await file.download();
 
         // 2. Extract Text
-        // TODO: For PDFs, use Document AI. For MVP, we presume simple text or use a basic parser.
-        // Doing a simple string conversion for MVP if text/plain, else mock.
         let fullText = "";
 
-        if (mimeType === 'text/plain' || mimeType === 'application/markdown') {
-            fullText = buffer.toString('utf-8');
-        } else if (mimeType === 'application/pdf') {
+        if (mimeType === 'application/pdf') {
             try {
-                // Dynamically import or require to ensure it works
+                // Try Document AI first for PDFs (handles OCR)
+                fullText = await extractTextWithDocAI(buffer, mimeType);
+                console.log(`Extracted ${fullText.length} chars using Document AI`);
+            } catch (err) {
+                console.warn('Falling back to pdf-parse due to DocAI error.');
                 const pdf = require('pdf-parse');
                 const data = await pdf(buffer);
                 fullText = data.text;
-                console.log(`Extracted ${fullText.length} chars from PDF`);
-            } catch (err) {
-                console.error('PDF parsing failed:', err);
-                fullText = "Error parsing PDF content.";
             }
-        } else if (
-            mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-            mimeType === 'application/vnd.ms-powerpoint'
-        ) {
-            try {
+        } else if (mimeType.startsWith('text/') || mimeType === 'application/markdown') {
+            fullText = buffer.toString('utf-8');
+        } else {
+            // Fallback/Placeholder for PPTX etc (keep existing logic or expand)
+            // For MVP speed, handling text/pdf primarily as per tasks
+            if (mimeType.includes('presentation')) {
                 const getText = require('office-text-extractor');
-                // office-text-extractor expects a file path or buffer. 
-                // Since we have a buffer, we might need to write it to temp file or see if it accepts buffer.
-                // Checking docs: it accepts file path. So we need to write to temp.
                 const fs = require('fs');
                 const os = require('os');
                 const path = require('path');
                 const tempFilePath = path.join(os.tmpdir(), `temp_${materialId}.pptx`);
-
                 fs.writeFileSync(tempFilePath, buffer);
                 fullText = await getText(tempFilePath);
-                fs.unlinkSync(tempFilePath); // Cleanup
-
-                console.log(`Extracted ${fullText.length} chars from PPTX`);
-            } catch (err: any) {
-                console.error('PPTX parsing failed:', err);
-                fullText = `Error parsing PPTX: ${err.message}`;
+                fs.unlinkSync(tempFilePath);
+            } else {
+                fullText = buffer.toString('utf-8');
             }
-        } else {
-            // Fallback for other types
-            fullText = buffer.toString('utf-8'); // Try text anyway
-            if (fullText.length > 100000) fullText = "File too large or binary.";
         }
 
-        // 3. Chunking
-        // Split by paragraph or ~500 chars
-        const rawChunks = fullText.split(/\n\s*\n/);
+        if (!fullText || fullText.length < 50) {
+            throw new Error('Could not extract text or text is too short.');
+        }
+
+        // 3. Chunking (Robust)
+        const textChunks = chunkText(fullText);
         const chunks: Chunk[] = [];
 
-        for (const [index, text] of rawChunks.entries()) {
-            if (text.trim().length < 50) continue; // Skip tiny chunks
+        console.log(`Generated ${textChunks.length} chunks.`);
 
-            // 4. Generate Embedding
+        // 4. Generate Embeddings & Prepare for Vector Search
+        for (const [index, text] of textChunks.entries()) {
             const embedding = await vertexService.getEmbeddings(text);
 
             chunks.push({
@@ -87,14 +134,20 @@ export const processMaterial = async (courseId: string, materialId: string, gcsP
             });
         }
 
-        // 5. Store Metadata in Firestore (for RAG retrieval mainly via Vector Search, but we store text here for reference)
+        // 5. Store Data
+        // Ideally: Upload `chunks` to Vertex AI Vector Search Index
+        // MVP: Store in Firestore 'chunks' collection for basic retrieval + vector field for future
         const batch = db.batch();
         for (const chunk of chunks) {
             const chunkRef = db.collection('courses').doc(courseId).collection('chunks').doc(chunk.id);
             batch.set(chunkRef, {
                 text: chunk.text,
                 materialId: chunk.materialId,
-                vector: chunk.embedding // In real Vector Search, this goes to the Index Endpoint, not just Firestore
+                embedding: chunk.embedding, // Vector field
+                metadata: {
+                    source: gcsPath,
+                    processedAt: new Date().toISOString()
+                }
             });
         }
         await batch.commit();
@@ -106,13 +159,13 @@ export const processMaterial = async (courseId: string, materialId: string, gcsP
             processedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        console.log(`Ingestion complete for ${materialId}. Processed ${chunks.length} chunks.`);
+        console.log(`Ingestion complete for ${materialId}.`);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Ingestion failed:', error);
         await db.collection('courses').doc(courseId).collection('materials').doc(materialId).update({
             status: 'failed',
-            error: error instanceof Error ? error.message : 'Unknown error'
+            error: error.message
         });
     }
 };

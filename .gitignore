@@ -32,10 +32,11 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-# env files (can opt-in for committing if needed)
-.env
-.env.local
 .env.example
+
+# Firebase service account keys (NEVER commit these!)
+serviceAccountKey.json
+functions/serviceAccountKey.json
 
 # vercel
 .vercel
@@ -58,3 +59,12 @@ Desktop.ini
 
 # markdown
 *.md
+
+# Firebase
+.firebase/
+firebase-debug.log
+ui-debug.log
+firestore-debug.log
+pubsub-debug.log
+.env
+.env.local

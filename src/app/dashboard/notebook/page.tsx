@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Search, Send, Library, BookOpen, Mic, Sparkles, Loader2, Bot, User, Paperclip, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { apiRequest } from '@/lib/api';
+import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 // import { ref, uploadBytes } from 'firebase/storage';
 // import { storage } from '@/lib/firebase';
@@ -45,13 +45,11 @@ export default function NotebookPage() {
         }
     }, [user, messages.length]);
 
-    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
         if (!file || !token) return;
 
         setUploading(true);
-        const tempId = Date.now().toString();
-
         // Optimistic UI update
         setMessages(prev => [...prev, {
             role: 'user',
@@ -59,40 +57,34 @@ export default function NotebookPage() {
         }]);
 
         try {
-            // Server-Side Upload (Bypass CORS)
             const formData = new FormData();
             formData.append('file', file);
             formData.append('courseId', 'default_course_id');
 
-            // API Address (Functions Emulator)
-            const API_BASE = 'http://localhost:5001/echo-1928rn/us-central1/api';
-
-            const response = await fetch(`${API_BASE}/upload`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
-                body: formData
+            // Use the centralized API client (it handles Auth header)
+            // We need to override content-type to let browser set boundary
+            const response = await api.post('/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
 
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || response.statusText || 'Upload failed');
-            }
+            console.log('Upload success:', response.data);
 
-            const data = await response.json();
-            console.log('Upload success:', data);
+            // Store the chatId from upload response for context-aware chat
+            if (response.data.chatId) {
+                setCurrentChatId(response.data.chatId);
+                console.log('Using chatId for document context:', response.data.chatId);
+            }
 
             setMessages(prev => [...prev, {
                 role: 'model',
-                content: `✅ Successfully processed "${file.name}". Ready to chat!`
+                content: `✅ Successfully processed "${file.name}". Ready to chat!\n\nExtracted ${response.data.textLength} characters from the document.`
             }]);
 
         } catch (error: any) {
             console.error('Upload error:', error);
             setMessages(prev => [...prev, {
                 role: 'model',
-                content: `❌ Failed to upload ${file.name}: ${error.message}. Please check if backend is running.`
+                content: `❌ Failed to upload ${file.name}: ${error.response?.data?.error || error.message}`
             }]);
         } finally {
             setUploading(false);
@@ -101,8 +93,21 @@ export default function NotebookPage() {
     };
 
     const handleSend = async () => {
-        if (!input.trim() || !token) return;
+        if (!input.trim()) {
+            console.log('No input to send');
+            return;
+        }
 
+        if (!token) {
+            console.error('No auth token available');
+            setMessages(prev => [...prev, {
+                role: 'model',
+                content: 'Error: Not authenticated. Please refresh the page.'
+            }]);
+            return;
+        }
+
+        console.log('Sending message:', input);
         const userMsg: Message = { role: 'user', content: input };
         setMessages(prev => [...prev, userMsg]);
         setInput('');
@@ -114,36 +119,48 @@ export default function NotebookPage() {
             // If no chat exists, create one
             if (!chatId) {
                 console.log('Creating new chat...');
-                const newChat = await apiRequest('/chats', 'POST', {
-                    title: input.substring(0, 30)
-                }, token);
-
-                console.log('Chat created:', newChat);
-                chatId = newChat.chatId;
+                const newChat = await api.post('/chats', {
+                    title: input.substring(0, 30),
+                    courseId: 'default_course_id'
+                });
+                chatId = newChat.data.chatId;
                 setCurrentChatId(chatId);
+                console.log('Chat created:', chatId);
             }
 
             // Send message
-            console.log('Sending message to chat:', chatId);
-            const response = await apiRequest(`/chats/${chatId}/message`, 'POST', {
+            console.log('Sending to API:', chatId);
+            const response = await api.post(`/chats/${chatId}/message`, {
                 message: userMsg.content,
                 courseId: 'default_course_id'
-            }, token);
+            });
 
-            console.log('AI Response:', response);
-            const aiMsg: Message = { role: 'model', content: response.response };
+            console.log('AI Response received:', response.data);
+            const aiMsg: Message = {
+                role: 'model',
+                content: response.data.response,
+                // sources: response.data.sources 
+            };
             setMessages(prev => [...prev, aiMsg]);
 
         } catch (error: any) {
-            console.error('Full error:', error);
+            console.error('Chat Error:', error);
+            console.error('Error details:', error.response?.data);
             setMessages(prev => [...prev, {
                 role: 'model',
-                content: `Error: ${error.message || "I'm having trouble connecting to the neural network right now. Please try again."}`
+                content: `Error: ${error.response?.data?.error || error.message || 'Failed to get AI response'}`
             }]);
         } finally {
             setLoading(false);
         }
     };
+
+    // Load Chats on Mount
+    useEffect(() => {
+        if (!token) return;
+        // Fetch last active chat or just start new (MVP: Start new for now, or fetch list)
+        // For this page, let's keep it simple: Start fresh, but maybe fetch history if user selects from sidebar
+    }, [token]);
 
     return (
         <div className="h-[calc(100vh-8rem)] flex flex-col gap-6">
