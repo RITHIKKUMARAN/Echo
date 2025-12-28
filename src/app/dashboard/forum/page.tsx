@@ -29,6 +29,7 @@ export default function ForumPage() {
     const [showCreate, setShowCreate] = useState(false);
     const [newDoubtContent, setNewDoubtContent] = useState('');
     const [creating, setCreating] = useState(false);
+    const [expandedDoubtId, setExpandedDoubtId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!token) return;
@@ -138,43 +139,62 @@ export default function ForumPage() {
                     {loading ? (
                         <div className="text-center py-10 text-slate-500">Loading discussions...</div>
                     ) : (
-                        doubts.map((post) => (
-                            <GlassCard key={post.doubtId} className="p-5 border-white/60 bg-white/40 hover:bg-white/80 transition-all cursor-pointer group" hoverEffect intensity="low">
-                                <div className="flex gap-4">
-                                    <div className="flex flex-col items-center gap-1 min-w-[3rem]">
-                                        <button className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-blue-600 transition-colors">
-                                            <ArrowUp className="w-5 h-5" />
-                                        </button>
-                                        <span className="font-bold text-slate-700">{post.votes || 0}</span>
-                                    </div>
-                                    <div className="flex-1">
-                                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-blue-600 transition-colors mb-1 line-clamp-2">{post.content}</h3>
-
-                                        <div className="flex items-center gap-4 text-xs text-slate-400 mt-2">
-                                            <span className="font-medium text-slate-600">{post.askedBy?.name || 'Anonymous'}</span>
-                                            <span>
-                                                {post.createdAt && (typeof post.createdAt === 'string' ? new Date(post.createdAt).toLocaleDateString() : 'Just now')}
-                                            </span>
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${post.status?.includes('AI') ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
-                                                {post.status?.replace('_', ' ') || 'OPEN'}
-                                            </span>
-                                            <span className="flex items-center gap-1 ml-auto"><MessageSquare className="w-3 h-3" /> {post.replies?.length || 0} replies</span>
-                                        </div>
-
-                                        {/* AI Reply Preview */}
-                                        {post.replies && post.replies.length > 0 && post.replies[0].isAi && (
-                                            <div className="mt-3 p-3 bg-purple-50/50 rounded-lg text-sm text-slate-600 border border-purple-100">
-                                                <div className="flex items-center gap-2 mb-1 text-purple-700 font-bold text-xs">
-                                                    <span className="flex items-center justify-center w-4 h-4 bg-purple-600 text-white rounded-full text-[8px]">AI</span>
-                                                    Campus AI Answered:
-                                                </div>
-                                                <p className="line-clamp-2">{post.replies[0].content}</p>
+                        doubts.map((post) => {
+                            const isExpanded = expandedDoubtId === post.doubtId;
+                            return (
+                                <GlassCard
+                                    key={post.doubtId}
+                                    className="p-5 border-white/60 bg-white/40 hover:bg-white/80 transition-all cursor-pointer group"
+                                    hoverEffect
+                                    intensity="low"
+                                >
+                                    <div onClick={() => setExpandedDoubtId(isExpanded ? null : post.doubtId)}>
+                                        <div className="flex gap-4">
+                                            <div className="flex flex-col items-center gap-1 min-w-[3rem]">
+                                                <button className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-blue-600 transition-colors">
+                                                    <ArrowUp className="w-5 h-5" />
+                                                </button>
+                                                <span className="font-bold text-slate-700">{post.votes || 0}</span>
                                             </div>
-                                        )}
+                                            <div className="flex-1">
+                                                <h3 className={`text-lg font-bold text-slate-800 group-hover:text-blue-600 transition-colors mb-1 ${!isExpanded ? 'line-clamp-2' : ''}`}>
+                                                    {post.content}
+                                                </h3>
+
+                                                <div className="flex items-center gap-4 text-xs text-slate-400 mt-2">
+                                                    <span className="font-medium text-slate-600">{post.askedBy?.name || 'Anonymous'}</span>
+                                                    <span>
+                                                        {post.createdAt && (typeof post.createdAt === 'string' ? new Date(post.createdAt).toLocaleDateString() : 'Just now')}
+                                                    </span>
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${post.status?.includes('AI') ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
+                                                        {post.status?.replace('_', ' ') || 'OPEN'}
+                                                    </span>
+                                                    <span className="flex items-center gap-1 ml-auto"><MessageSquare className="w-3 h-3" /> {post.replies?.length || 0} replies</span>
+                                                </div>
+
+                                                {/* AI Reply - Full or Preview */}
+                                                {post.replies && post.replies.length > 0 && post.replies[0].isAi && (
+                                                    <div className="mt-3 p-4 bg-purple-50/50 rounded-lg text-sm text-slate-700 border border-purple-100">
+                                                        <div className="flex items-center gap-2 mb-2 text-purple-700 font-bold text-xs">
+                                                            <span className="flex items-center justify-center w-5 h-5 bg-purple-600 text-white rounded-full text-[9px]">AI</span>
+                                                            Campus AI Answered:
+                                                        </div>
+                                                        <p className={`whitespace-pre-wrap leading-relaxed ${!isExpanded ? 'line-clamp-3' : ''}`}>
+                                                            {post.replies[0].content}
+                                                        </p>
+                                                        {!isExpanded && (
+                                                            <button className="text-blue-600 hover:text-blue-700 font-medium text-xs mt-2">
+                                                                Click to see full answer →
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </GlassCard>
-                        ))
+                                </GlassCard>
+                            )
+                        })
                     )}
 
                     {!loading && doubts.length === 0 && (

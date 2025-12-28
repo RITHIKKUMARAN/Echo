@@ -197,47 +197,60 @@ app.post('/echo-1928rn/us-central1/api/upload', upload.single('file'), async (re
     }
 });
 
+// Store doubts in memory (in production, use Firestore)
+const doubtsStorage = new Map(); // doubtId -> doubt object
+let doubtCounter = 0;
+
 // Get doubts
 app.get('/echo-1928rn/us-central1/api/doubts', (req, res) => {
-    // Sample doubts - in production this would query Firestore
-    res.json([
-        {
-            doubtId: 'doubt_1',
-            courseId: 'cs101',
-            content: 'How does backpropagation work in neural networks?',
-            askedBy: { name: 'Student A', uid: 'user1' },
-            createdAt: new Date(Date.now() - 3600000).toISOString(),
-            status: 'AI_ANSWERED',
-            replies: [{
-                isAi: true,
-                content: 'Backpropagation is an algorithm used to train neural networks by calculating gradients of the loss function with respect to each weight...',
-                createdAt: new Date(Date.now() - 3500000).toISOString(),
-                repliedBy: { uid: 'ai-bot', name: 'Campus AI' }
-            }],
-            votes: 5,
-            views: 12
-        }
-    ]);
+    // Return all doubts as array, sorted by most recent first
+    const allDoubts = Array.from(doubtsStorage.values())
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    console.log('Fetching doubts, count:', allDoubts.length);
+    res.json(allDoubts);
 });
+
+// Helper function to clean markdown from AI responses
+function cleanMarkdown(text) {
+    return text
+        .replace(/#{1,6}\s+/g, '') // Remove markdown headings
+        .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold
+        .replace(/\*([^*]+)\*/g, '$1') // Remove italic
+        .replace(/`([^`]+)`/g, '$1') // Remove inline code
+        .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+        .trim();
+}
 
 // Create doubt with AI response
 app.post('/echo-1928rn/us-central1/api/doubts', async (req, res) => {
     try {
         const doubtContent = req.body.content;
+        const courseId = req.body.courseId || 'general';
+
+        if (!doubtContent || !doubtContent.trim()) {
+            return res.status(400).json({ error: 'Doubt content is required' });
+        }
+
+        console.log('Creating doubt:', doubtContent);
 
         // Get AI response
-        const prompt = `You are a helpful AI tutor. A student has asked: "${doubtContent}"
+        const prompt = `You are a helpful AI tutor on a university learning platform. A student has asked the following question:
+
+        "${doubtContent}"
         
-        Provide a clear, concise, and helpful answer.`;
+        Provide a clear, comprehensive, and educational answer in plain text without any markdown formatting. Include examples if relevant.`;
 
         const result = await model.generateContent(prompt);
-        const aiAnswer = result.response.text();
+        const rawAnswer = result.response.text();
+        const aiAnswer = cleanMarkdown(rawAnswer); // Clean the response
 
+        const doubtId = 'doubt_' + (++doubtCounter) + '_' + Date.now();
         const doubt = {
-            doubtId: 'doubt_' + Date.now(),
+            doubtId,
             content: doubtContent,
-            courseId: req.body.courseId || 'general',
-            askedBy: { name: 'Current User', uid: 'user_' + Date.now() },
+            courseId,
+            askedBy: { name: 'Student', uid: 'user_' + Date.now() },
             createdAt: new Date().toISOString(),
             status: 'AI_ANSWERED',
             replies: [{
@@ -247,8 +260,13 @@ app.post('/echo-1928rn/us-central1/api/doubts', async (req, res) => {
                 repliedBy: { uid: 'ai-bot', name: 'Campus AI' }
             }],
             votes: 0,
-            views: 1
+            views: 0,
+            tags: []
         };
+
+        // Store the doubt
+        doubtsStorage.set(doubtId, doubt);
+        console.log('Doubt created:', doubtId, '- Total doubts:', doubtsStorage.size);
 
         res.json(doubt);
     } catch (error) {
