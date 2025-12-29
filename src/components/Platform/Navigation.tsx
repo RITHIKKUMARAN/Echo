@@ -57,7 +57,7 @@ export default function Navigation() {
 
             {/* Footer / Profile */}
             <div className="p-4 border-t border-white/5">
-                <div className="flex items-center overflow-hidden p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
+                <Link href="/dashboard/settings" className="flex items-center overflow-hidden p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex-shrink-0 border border-white/20 flex items-center justify-center text-white text-xs font-bold">
                         {user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
                     </div>
@@ -65,7 +65,7 @@ export default function Navigation() {
                         <p className="text-sm font-medium text-white">{user?.displayName || user?.email?.split('@')[0] || 'User'}</p>
                         <p className="text-xs text-slate-400">{user?.email || 'student@echo.edu'}</p>
                     </div>
-                </div>
+                </Link>
             </div>
         </nav>
     )

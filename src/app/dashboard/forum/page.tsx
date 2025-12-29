@@ -136,6 +136,20 @@ export default function ForumPage() {
                 </Button>
             </header>
 
+            {/* Escalation System Info Banner */}
+            <GlassCard className="p-4 bg-blue-50 border-blue-200 mb-6">
+                <div className="flex items-start gap-3">
+                    <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+                    <div className="flex-1">
+                        <h3 className="font-bold text-blue-900 mb-1">Smart Escalation System Active</h3>
+                        <p className="text-sm text-blue-700 leading-relaxed">
+                            Your doubts are automatically escalated: <span className="font-semibold">AI → Open Forum (all students) → Senior Students (30min) → Professor (2hr)</span>.
+                            No doubt goes unanswered! 🚀
+                        </p>
+                    </div>
+                </div>
+            </GlassCard>
+
             {/* Create Area */}
             <AnimatePresence>
                 {showCreate && (

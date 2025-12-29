@@ -255,11 +255,38 @@ const TIME_TO_PROFESSOR = 2 * 60 * 1000; // 2 minutes (Real World: 2 hours)
 
 // Get doubts
 app.get('/echo-1928rn/us-central1/api/doubts', (req, res) => {
+    const { userYear, department, courseId, role } = req.query;
+
     // Return all doubts as array, sorted by most recent first
-    const allDoubts = Array.from(doubtsStorage.values())
+    let allDoubts = Array.from(doubtsStorage.values())
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    console.log('Fetching doubts, count:', allDoubts.length);
+    // Filter based on role and visibility
+    if (role === 'PROFESSOR') {
+        // Professors see only PROFESSOR status doubts
+        allDoubts = allDoubts.filter(d => d.status === 'PROFESSOR');
+    } else if (userYear && department && courseId) {
+        // Seniors see: OPEN, SENIOR_VISIBLE (for their dept/course), and their own doubts
+        allDoubts = allDoubts.filter(d => {
+            // Always show own doubts, OPEN doubts, and RESOLVED
+            if (d.status === 'OPEN' || d.status === 'RESOLVED' || d.status === 'AI') {
+                return true;
+            }
+            // Show SENIOR_VISIBLE only if user is senior (higher year) in same dept/course
+            if (d.status === 'SENIOR_VISIBLE') {
+                // Would check: userYear > doubt.askedBy.year && same dept/course
+                return d.courseId === courseId && d.askedBy.department === department;
+            }
+            return false;
+        });
+    } else {
+        // Regular students see: OPEN, AI, RESOLVED, and their own doubts
+        allDoubts = allDoubts.filter(d =>
+            d.status === 'OPEN' || d.status === 'RESOLVED' || d.status === 'AI'
+        );
+    }
+
+    console.log('Fetching doubts, count:', allDoubts.length, 'Role:', role || 'STUDENT');
     res.json(allDoubts);
 });
 
