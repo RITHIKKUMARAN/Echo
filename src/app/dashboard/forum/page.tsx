@@ -4,22 +4,31 @@ import { useState, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { MessageSquare, ThumbsUp, Eye, Search, PlusCircle, ArrowUp } from 'lucide-react';
+import { MessageSquare, ThumbsUp, Eye, Search, PlusCircle, CheckCircle, HelpCircle, User, Shield, GraduationCap, X } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { AnimatePresence, motion } from 'framer-motion';
 
+interface Reply {
+    replyId: string;
+    content: string;
+    repliedBy: { name: string; role: string };
+    createdAt: string;
+    isAi: boolean;
+    isAccepted: boolean;
+}
+
 interface Doubt {
     doubtId: string;
-    courseId: string;
     content: string;
-    tags?: string[];
-    votes: number;
-    views: number;
-    replies: any[]; // refine type later
+    status: 'AI' | 'OPEN' | 'SENIOR_VISIBLE' | 'PROFESSOR' | 'RESOLVED';
+    resolved: boolean;
+    aiAnswer?: string;
+    replies: Reply[];
     askedBy: { name: string; uid: string };
-    createdAt: any;
-    status: string;
+    createdAt: string;
+    votes: number;
+    courseId: string;
 }
 
 export default function ForumPage() {
@@ -29,17 +38,21 @@ export default function ForumPage() {
     const [showCreate, setShowCreate] = useState(false);
     const [newDoubtContent, setNewDoubtContent] = useState('');
     const [creating, setCreating] = useState(false);
+    const [replyContent, setReplyContent] = useState<{ [key: string]: string }>({});
     const [expandedDoubtId, setExpandedDoubtId] = useState<string | null>(null);
 
+    // Auto-refresh for escalation updates
     useEffect(() => {
         if (!token) return;
         fetchDoubts();
+
+        const interval = setInterval(fetchDoubts, 5000); // Poll every 5s
+        return () => clearInterval(interval);
     }, [token]);
 
     const fetchDoubts = async () => {
         try {
             const res = await api.get('/doubts');
-            // Backend returns array of doubts
             setDoubts(res.data);
         } catch (error) {
             console.error('Failed to fetch doubts:', error);
@@ -54,56 +67,91 @@ export default function ForumPage() {
         setCreating(true);
         try {
             await api.post('/doubts', {
-                courseId: 'default_course_id', // MVP: Default course
-                content: newDoubtContent
+                courseId: 'CS101', // Example course
+                content: newDoubtContent,
+                userName: user?.displayName || user?.email?.split('@')[0] || 'Student',
+                userUid: user?.uid || 'anonymous'
             });
             setNewDoubtContent('');
             setShowCreate(false);
-            fetchDoubts(); // Refresh list to show new doubt (and potentially AI answer)
+            fetchDoubts();
         } catch (error) {
-            console.error('Create doubt failed:', error);
             alert('Failed to post doubt');
         } finally {
             setCreating(false);
         }
     };
 
+    const handleStudentAction = async (doubtId: string, action: 'SOLVED' | 'CONFUSED') => {
+        try {
+            await api.post(`/doubts/${doubtId}/action`, { action });
+            fetchDoubts();
+            if (action === 'CONFUSED') setExpandedDoubtId(doubtId);
+        } catch (error) {
+            alert('Action failed');
+        }
+    };
+
+    const handleSubmitReply = async (doubtId: string) => {
+        const content = replyContent[doubtId];
+        if (!content?.trim()) return;
+
+        try {
+            // Simulator: Randomly decide if replier is a Professor or Student for demo
+            const isProfessor = Math.random() > 0.8;
+
+            await api.post(`/doubts/${doubtId}/reply`, {
+                content,
+                authorName: user?.displayName || user?.email?.split('@')[0] || 'Anonymous',
+                isProfessor
+            });
+
+            setReplyContent(prev => ({ ...prev, [doubtId]: '' }));
+            fetchDoubts();
+        } catch (error) {
+            alert('Reply failed');
+        }
+    };
+
+    const getStatusParams = (status: string) => {
+        switch (status) {
+            case 'AI': return { color: 'bg-purple-100 text-purple-700 border-purple-200', text: 'AI Analyzing', icon: HelpCircle };
+            case 'OPEN': return { color: 'bg-green-100 text-green-700 border-green-200', text: 'Open to Class', icon: User };
+            case 'SENIOR_VISIBLE': return { color: 'bg-orange-100 text-orange-700 border-orange-200', text: 'Escalated to Seniors', icon: Shield };
+            case 'PROFESSOR': return { color: 'bg-red-100 text-red-700 border-red-200', text: 'Professor Attention', icon: GraduationCap };
+            case 'RESOLVED': return { color: 'bg-blue-100 text-blue-700 border-blue-200', text: 'Resolved', icon: CheckCircle };
+            default: return { color: 'bg-slate-100', text: status, icon: HelpCircle };
+        }
+    };
+
     return (
-        <div className="max-w-5xl mx-auto flex flex-col gap-6 h-full">
+        <div className="max-w-5xl mx-auto flex flex-col gap-6 pb-20">
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Doubt Forum</h1>
-                    <p className="text-slate-500 text-sm mt-1">Collaborative problem solving</p>
+                    <p className="text-slate-500 text-sm mt-1">AI-First Resolution Engine</p>
                 </div>
-                <Button
-                    className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                    onClick={() => setShowCreate(!showCreate)}
-                >
-                    <PlusCircle className="w-4 h-4" /> New Discussion
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2" onClick={() => setShowCreate(!showCreate)}>
+                    <PlusCircle className="w-4 h-4" /> Ask Question
                 </Button>
             </header>
 
-            {/* Create Doubt Area */}
+            {/* Create Area */}
             <AnimatePresence>
                 {showCreate && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                    >
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                         <GlassCard className="p-4 bg-white/60 mb-6">
                             <textarea
-                                className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                className="w-full p-4 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-800"
                                 rows={3}
-                                placeholder="What's your question? (AI will try to answer first)"
+                                placeholder="Describe your doubt..."
                                 value={newDoubtContent}
                                 onChange={(e) => setNewDoubtContent(e.target.value)}
                             />
-                            <div className="flex justify-end gap-2 mt-2">
+                            <div className="flex justify-end mt-3 gap-2">
                                 <Button variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
-                                <Button onClick={handleCreateDoubt} disabled={creating}>
-                                    {creating ? 'Posting...' : 'Post Question'}
+                                <Button onClick={handleCreateDoubt} disabled={creating} className="bg-blue-600 text-white">
+                                    {creating ? 'Analyzing...' : 'Post Doubt'}
                                 </Button>
                             </div>
                         </GlassCard>
@@ -111,98 +159,111 @@ export default function ForumPage() {
                 )}
             </AnimatePresence>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 flex-1 min-h-0">
-                {/* Filters Sidebar */}
-                <div className="md:col-span-1 space-y-4">
-                    <div className="p-1 bg-slate-100 rounded-lg flex">
-                        <button className="flex-1 py-1.5 text-sm font-medium rounded-md bg-white shadow-sm text-slate-800">Newest</button>
-                        <button className="flex-1 py-1.5 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700">Top</button>
-                    </div>
+            {/* List */}
+            <div className="space-y-4">
+                {doubts.map((doubt) => {
+                    const status = getStatusParams(doubt.status);
+                    const StatusIcon = status.icon;
+                    const isExpanded = expandedDoubtId === doubt.doubtId;
 
-                    <GlassCard className="p-4 bg-white/50 border-white/60 space-y-2">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Categories</h3>
-                        {['All Topics', 'Course Material', 'Assignments', 'General'].map((tag, i) => (
-                            <button key={i} className={`block w-full text-left px-3 py-2 rounded-lg text-sm ${i === 0 ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-white/50'}`}>
-                                {tag}
-                            </button>
-                        ))}
-                    </GlassCard>
-                </div>
-
-                {/* Discussions List */}
-                <div className="md:col-span-3 space-y-3 overflow-y-auto pb-10">
-                    <div className="relative mb-4">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <Input placeholder="Search doubts and discussions..." className="pl-9 bg-white border-slate-200" />
-                    </div>
-
-                    {loading ? (
-                        <div className="text-center py-10 text-slate-500">Loading discussions...</div>
-                    ) : (
-                        doubts.map((post) => {
-                            const isExpanded = expandedDoubtId === post.doubtId;
-                            return (
-                                <GlassCard
-                                    key={post.doubtId}
-                                    className="p-5 border-white/60 bg-white/40 hover:bg-white/80 transition-all cursor-pointer group"
-                                    hoverEffect
-                                    intensity="low"
-                                >
-                                    <div onClick={() => setExpandedDoubtId(isExpanded ? null : post.doubtId)}>
-                                        <div className="flex gap-4">
-                                            <div className="flex flex-col items-center gap-1 min-w-[3rem]">
-                                                <button className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-blue-600 transition-colors">
-                                                    <ArrowUp className="w-5 h-5" />
-                                                </button>
-                                                <span className="font-bold text-slate-700">{post.votes || 0}</span>
-                                            </div>
-                                            <div className="flex-1">
-                                                <h3 className={`text-lg font-bold text-slate-800 group-hover:text-blue-600 transition-colors mb-1 ${!isExpanded ? 'line-clamp-2' : ''}`}>
-                                                    {post.content}
-                                                </h3>
-
-                                                <div className="flex items-center gap-4 text-xs text-slate-400 mt-2">
-                                                    <span className="font-medium text-slate-600">{post.askedBy?.name || 'Anonymous'}</span>
-                                                    <span>
-                                                        {post.createdAt && (typeof post.createdAt === 'string' ? new Date(post.createdAt).toLocaleDateString() : 'Just now')}
-                                                    </span>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${post.status?.includes('AI') ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
-                                                        {post.status?.replace('_', ' ') || 'OPEN'}
-                                                    </span>
-                                                    <span className="flex items-center gap-1 ml-auto"><MessageSquare className="w-3 h-3" /> {post.replies?.length || 0} replies</span>
-                                                </div>
-
-                                                {/* AI Reply - Full or Preview */}
-                                                {post.replies && post.replies.length > 0 && post.replies[0].isAi && (
-                                                    <div className="mt-3 p-4 bg-purple-50/50 rounded-lg text-sm text-slate-700 border border-purple-100">
-                                                        <div className="flex items-center gap-2 mb-2 text-purple-700 font-bold text-xs">
-                                                            <span className="flex items-center justify-center w-5 h-5 bg-purple-600 text-white rounded-full text-[9px]">AI</span>
-                                                            Campus AI Answered:
-                                                        </div>
-                                                        <p className={`whitespace-pre-wrap leading-relaxed ${!isExpanded ? 'line-clamp-3' : ''}`}>
-                                                            {post.replies[0].content}
-                                                        </p>
-                                                        {!isExpanded && (
-                                                            <button className="text-blue-600 hover:text-blue-700 font-medium text-xs mt-2">
-                                                                Click to see full answer →
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
+                    return (
+                        <GlassCard key={doubt.doubtId} className={`p-0 overflow-hidden transition-all duration-300 border-slate-200 ${isExpanded ? 'ring-2 ring-blue-500/20' : ''}`}>
+                            <div className="p-5 cursor-pointer hover:bg-slate-50/50" onClick={() => setExpandedDoubtId(isExpanded ? null : doubt.doubtId)}>
+                                <div className="flex justify-between items-start gap-4">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${status.color}`}>
+                                                <StatusIcon className="w-3 h-3" /> {status.text}
+                                            </span>
+                                            <span className="text-xs text-slate-400">• {new Date(doubt.createdAt).toLocaleTimeString()}</span>
                                         </div>
+                                        <h3 className="text-slate-900 font-medium text-lg leading-relaxed">{doubt.content}</h3>
                                     </div>
-                                </GlassCard>
-                            )
-                        })
-                    )}
+                                    <div className="flex items-center gap-1 text-slate-400">
+                                        <MessageSquare className="w-4 h-4" />
+                                        <span className="text-xs font-bold">{doubt.replies.length}</span>
+                                    </div>
+                                </div>
+                            </div>
 
-                    {!loading && doubts.length === 0 && (
-                        <div className="text-center py-20 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                            <p className="text-slate-500">No discussions yet. Be the first to ask!</p>
-                        </div>
-                    )}
-                </div>
+                            <AnimatePresence>
+                                {isExpanded && (
+                                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden bg-slate-50/50 border-t border-slate-200">
+                                        <div className="p-5 space-y-6">
+
+                                            {/* STEP 1 & 2: AI ANSWER & CONFIRMATION */}
+                                            {doubt.aiAnswer && (
+                                                <div className="bg-white p-4 rounded-xl border border-purple-100 shadow-sm relative overflow-hidden">
+                                                    <div className="absolute top-0 left-0 w-1 h-full bg-purple-500" />
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded uppercase">Campus AI Suggestion</div>
+                                                    </div>
+                                                    <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-line">{doubt.aiAnswer}</p>
+
+                                                    {/* Confirmation Buttons (Only if AI status) */}
+                                                    {doubt.status === 'AI' && (
+                                                        <div className="mt-4 flex gap-3 pt-4 border-t border-slate-100">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleStudentAction(doubt.doubtId, 'SOLVED'); }}
+                                                                className="flex-1 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-bold rounded-lg border border-green-200 transition-colors flex justify-center items-center gap-2"
+                                                            >
+                                                                <CheckCircle className="w-4 h-4" /> Solved!
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleStudentAction(doubt.doubtId, 'CONFUSED'); }}
+                                                                className="flex-1 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200 transition-colors flex justify-center items-center gap-2"
+                                                            >
+                                                                <HelpCircle className="w-4 h-4" /> Still Confused
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* STEP 3+: FORUM REPLIES */}
+                                            {(doubt.status !== 'AI' || doubt.replies.length > 0) && (
+                                                <div className="space-y-4">
+                                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Discussion Thread</h4>
+
+                                                    {doubt.replies.length === 0 && (
+                                                        <p className="text-sm text-slate-400 italic text-center py-4">No replies yet. Be the first to help!</p>
+                                                    )}
+
+                                                    {doubt.replies.map(reply => (
+                                                        <div key={reply.replyId} className={`p-4 rounded-xl text-sm ${reply.isAccepted ? 'bg-green-50 border border-green-200' : 'bg-white border border-slate-200'}`}>
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <span className="font-bold text-slate-700 flex items-center gap-2">
+                                                                    {reply.repliedBy.name}
+                                                                    {reply.repliedBy.role === 'PROFESSOR' && <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] rounded uppercase">Prof</span>}
+                                                                    {reply.isAccepted && <span className="px-1.5 py-0.5 bg-green-100 text-green-600 text-[10px] rounded uppercase flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Answer</span>}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400">{new Date(reply.createdAt).toLocaleTimeString()}</span>
+                                                            </div>
+                                                            <p className="text-slate-600">{reply.content}</p>
+                                                        </div>
+                                                    ))}
+
+                                                    {/* Reply Input */}
+                                                    {doubt.status !== 'RESOLVED' && (
+                                                        <div className="flex gap-2 mt-4">
+                                                            <Input
+                                                                className="bg-white"
+                                                                placeholder="Type a helpful reply..."
+                                                                value={replyContent[doubt.doubtId] || ''}
+                                                                onChange={(e) => setReplyContent(prev => ({ ...prev, [doubt.doubtId]: e.target.value }))}
+                                                            />
+                                                            <Button onClick={() => handleSubmitReply(doubt.doubtId)} className="bg-slate-800 text-white">Reply</Button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </GlassCard>
+                    );
+                })}
             </div>
         </div>
     );

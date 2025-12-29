@@ -39,7 +39,7 @@ export default function GlassCard({ children, className, hoverEffect = false, in
             {/* Noise Texture for granularity */}
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
 
-            <div className="relative z-10">
+            <div className="relative z-10 h-full">
                 {children}
             </div>
         </motion.div>

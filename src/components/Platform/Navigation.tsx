@@ -3,6 +3,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, Book, MessageCircle, Video, Users } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const links = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -14,6 +15,7 @@ const links = [
 
 export default function Navigation() {
     const pathname = usePathname();
+    const { user } = useAuth();
 
     return (
         <nav className="h-screen w-20 hover:w-64 transition-all duration-500 ease-out group fixed left-0 top-0 z-50 flex flex-col bg-slate-950/80 backdrop-blur-xl border-r border-white/10">
@@ -56,10 +58,12 @@ export default function Navigation() {
             {/* Footer / Profile */}
             <div className="p-4 border-t border-white/5">
                 <div className="flex items-center overflow-hidden p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex-shrink-0 border border-white/20" />
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex-shrink-0 border border-white/20 flex items-center justify-center text-white text-xs font-bold">
+                        {user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+                    </div>
                     <div className="ml-3 opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap">
-                        <p className="text-sm font-medium text-white">Alex Kumar</p>
-                        <p className="text-xs text-slate-400">CS Dept • Year 3</p>
+                        <p className="text-sm font-medium text-white">{user?.displayName || user?.email?.split('@')[0] || 'User'}</p>
+                        <p className="text-xs text-slate-400">{user?.email || 'student@echo.edu'}</p>
                     </div>
                 </div>
             </div>

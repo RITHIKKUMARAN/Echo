@@ -15,9 +15,9 @@ app.use(cors({ origin: true }));
 app.use(express.json({ limit: '50mb' }));
 
 // Initialize Gemini AI (using the simpler @google/generative-ai package)
-// You'll need to set your API key
+// IMPORTANT: Model is FIXED to gemini-2.5-flash - DO NOT CHANGE
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE');
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 // File upload setup
 const storage = multer.memoryStorage();
@@ -36,6 +36,13 @@ app.get('/echo-1928rn/us-central1/api/', (req, res) => {
     res.json({ status: 'online', message: 'Campus AI Platform API is running', model: 'gemini-1.5-flash' });
 });
 
+// User sync endpoint (called by AuthContext on login)
+app.post('/echo-1928rn/us-central1/api/users/sync', (req, res) => {
+    const { uid, email, displayName } = req.body;
+    console.log('User synced:', email);
+    res.json({ success: true, uid, synced: true });
+});
+
 // Create chat session
 app.post('/echo-1928rn/us-central1/api/chats', (req, res) => {
     const chatId = 'chat_' + Date.now();
@@ -47,7 +54,47 @@ app.post('/echo-1928rn/us-central1/api/chats', (req, res) => {
     });
 });
 
-// Chat with AI
+// Unified Chat Endpoint (Simpler for Frontend)
+app.post('/echo-1928rn/us-central1/api/chat', async (req, res) => {
+    try {
+        const userMessage = req.body.message || 'Hello';
+        const chatId = req.body.chatId || 'chat_' + Date.now();
+
+        // Context Retrieval
+        const context = documentContext.get(chatId);
+
+        let prompt;
+        if (context && context.content) {
+            prompt = `You are an AI research assistant for "Echo Platform". 
+            The student has uploaded a document titled "${context.filename}".
+            
+            ---DOCUMENT START---
+            ${context.content}
+            ---DOCUMENT END---
+            
+            Question: "${userMessage}"
+            
+            Answer concisely based on the document.`;
+        } else {
+            prompt = `You are a helpful AI assistant for Echo Platform. Question: "${userMessage}". Answer helpfully.`;
+        }
+
+        const result = await model.generateContent(prompt);
+        const aiResponse = result.response.text();
+
+        res.json({
+            response: aiResponse,
+            chatId,
+            sources: context ? [{ filename: context.filename, type: 'pdf' }] : [],
+            model: 'gemini-2.5-flash'
+        });
+    } catch (error) {
+        console.error('Chat API Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Chat with AI (Legacy Path)
 app.post('/echo-1928rn/us-central1/api/chats/:chatId/message', async (req, res) => {
     try {
         const { chatId } = req.params;
@@ -88,7 +135,7 @@ app.post('/echo-1928rn/us-central1/api/chats/:chatId/message', async (req, res) 
         res.json({
             response: aiResponse,
             sources: context ? [{ filename: context.filename, type: 'pdf' }] : [],
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash',
             hasContext: !!context
         });
     } catch (error) {
@@ -201,6 +248,11 @@ app.post('/echo-1928rn/us-central1/api/upload', upload.single('file'), async (re
 const doubtsStorage = new Map(); // doubtId -> doubt object
 let doubtCounter = 0;
 
+// ESCALATION CONSTANTS (Reduced for Demo/Testing)
+// To test escalation, wait 30 seconds for SENIOR, then 2 minutes for PROFESSOR
+const TIME_TO_SENIOR = 30 * 1000; // 30 seconds (Real World: 30 mins)
+const TIME_TO_PROFESSOR = 2 * 60 * 1000; // 2 minutes (Real World: 2 hours)
+
 // Get doubts
 app.get('/echo-1928rn/us-central1/api/doubts', (req, res) => {
     // Return all doubts as array, sorted by most recent first
@@ -222,11 +274,13 @@ function cleanMarkdown(text) {
         .trim();
 }
 
-// Create doubt with AI response
+// STEP 1: DOUBT CREATION & AI RESPONSE
 app.post('/echo-1928rn/us-central1/api/doubts', async (req, res) => {
     try {
         const doubtContent = req.body.content;
         const courseId = req.body.courseId || 'general';
+        const userName = req.body.userName || 'Student';
+        const userUid = req.body.userUid || 'user_' + Date.now();
 
         if (!doubtContent || !doubtContent.trim()) {
             return res.status(400).json({ error: 'Doubt content is required' });
@@ -243,30 +297,29 @@ app.post('/echo-1928rn/us-central1/api/doubts', async (req, res) => {
 
         const result = await model.generateContent(prompt);
         const rawAnswer = result.response.text();
-        const aiAnswer = cleanMarkdown(rawAnswer); // Clean the response
+        const aiAnswer = cleanMarkdown(rawAnswer);
 
         const doubtId = 'doubt_' + (++doubtCounter) + '_' + Date.now();
         const doubt = {
             doubtId,
             content: doubtContent,
             courseId,
-            askedBy: { name: 'Student', uid: 'user_' + Date.now() },
+            askedBy: { name: userName, uid: userUid },
             createdAt: new Date().toISOString(),
-            status: 'AI_ANSWERED',
-            replies: [{
-                isAi: true,
-                content: aiAnswer,
-                createdAt: new Date().toISOString(),
-                repliedBy: { uid: 'ai-bot', name: 'Campus AI' }
-            }],
+            status: 'AI', // Initial Status: AI (Step 1)
+            resolved: false,
+            lastEscalatedAt: null,
+            aiAnswer: aiAnswer, // Store specific AI answer field
+            replies: [], // For Step 3 replies
             votes: 0,
             views: 0,
-            tags: []
+            tags: [],
+            history: [{ status: 'AI', timestamp: new Date().toISOString(), note: 'AI Generated Answer' }]
         };
 
         // Store the doubt
         doubtsStorage.set(doubtId, doubt);
-        console.log('Doubt created:', doubtId, '- Total doubts:', doubtsStorage.size);
+        console.log('Doubt created:', doubtId, 'Status: AI');
 
         res.json(doubt);
     } catch (error) {
@@ -274,6 +327,110 @@ app.post('/echo-1928rn/us-central1/api/doubts', async (req, res) => {
         res.status(500).json({ error: 'Failed to process doubt', details: error.message });
     }
 });
+
+// STEP 2: STUDENT CONFIRMATION (Resolve or Escalate)
+app.post('/echo-1928rn/us-central1/api/doubts/:doubtId/action', async (req, res) => {
+    try {
+        const { doubtId } = req.params;
+        const { action } = req.body; // 'SOLVED' or 'CONFUSED'
+
+        const doubt = doubtsStorage.get(doubtId);
+        if (!doubt) return res.status(404).json({ error: 'Doubt not found' });
+
+        if (action === 'SOLVED') {
+            // STEP 6: RESOLUTION & MEMORY indexing
+            doubt.status = 'RESOLVED';
+            doubt.resolved = true;
+            doubt.history.push({ status: 'RESOLVED', timestamp: new Date().toISOString(), note: 'Student confirmed AI solution' });
+
+            // Mock Indexing
+            console.log(`[KnowledgeMemory] Indexing doubt ${doubtId} into Vertex AI Vector Search...`);
+            console.log(`[KnowledgeMemory] Tags: ${doubt.courseId}, Topic Embedding Generated.`);
+
+        } else if (action === 'CONFUSED') {
+            // STEP 3: OPEN STUDENT FORUM
+            doubt.status = 'OPEN';
+            doubt.lastEscalatedAt = new Date().toISOString(); // Start escalation timer
+            doubt.history.push({ status: 'OPEN', timestamp: new Date().toISOString(), note: 'Student escalated to Forum' });
+
+            console.log(`[Escalation] Doubt ${doubtId} moved to OPEN forum.`);
+        } else {
+            return res.status(400).json({ error: 'Invalid action' });
+        }
+
+        doubtsStorage.set(doubtId, doubt); // Update storage
+        res.json(doubt);
+    } catch (error) {
+        console.error('Action error:', error);
+        res.status(500).json({ error: 'Failed' });
+    }
+});
+
+// STEP 3: REPLIES (Discussion)
+app.post('/echo-1928rn/us-central1/api/doubts/:doubtId/reply', (req, res) => {
+    const { doubtId } = req.params;
+    const { content, authorName, isProfessor } = req.body;
+
+    const doubt = doubtsStorage.get(doubtId);
+    if (!doubt) return res.status(404).json({ error: 'Doubt not found' });
+
+    const reply = {
+        replyId: 'reply_' + Date.now(),
+        content,
+        repliedBy: { name: authorName || 'Peer', uid: 'user_' + Date.now(), role: isProfessor ? 'PROFESSOR' : 'STUDENT' },
+        createdAt: new Date().toISOString(),
+        isAi: false,
+        isAccepted: false
+    };
+
+    doubt.replies.push(reply);
+
+    // STEP 7: PROFESSOR INTERVENTION (Auto-Resolve if Professor replies)
+    if (isProfessor) {
+        doubt.status = 'RESOLVED';
+        doubt.resolved = true;
+        reply.isAccepted = true;
+        doubt.history.push({ status: 'RESOLVED', timestamp: new Date().toISOString(), note: 'Professor resolved via reply' });
+        console.log(`[Resolution] Professor resolved doubt ${doubtId}`);
+    }
+
+    doubtsStorage.set(doubtId, doubt);
+    res.json(doubt);
+});
+
+// STEP 4 & 5: AUTOMATIC ESCALATION ENGINE
+// Runs every 10 seconds to check for escalations
+setInterval(() => {
+    const now = new Date();
+    let updates = 0;
+
+    doubtsStorage.forEach((doubt, id) => {
+        if (!doubt.lastEscalatedAt || doubt.resolved) return;
+
+        const escalatedTime = new Date(doubt.lastEscalatedAt);
+        const diffMs = now - escalatedTime;
+
+        // Rule 1: OPEN -> SENIOR_VISIBLE
+        if (doubt.status === 'OPEN' && diffMs >= TIME_TO_SENIOR) {
+            doubt.status = 'SENIOR_VISIBLE';
+            doubt.history.push({ status: 'SENIOR_VISIBLE', timestamp: now.toISOString(), note: 'Auto-escalated to Seniors' });
+            console.log(`[EscalationEngine] Doubt ${id} escalated to SENIOR_VISIBLE`);
+            updates++;
+        }
+        // Rule 2: SENIOR_VISIBLE -> PROFESSOR
+        else if (doubt.status === 'SENIOR_VISIBLE' && diffMs >= TIME_TO_PROFESSOR) {
+            doubt.status = 'PROFESSOR';
+            doubt.history.push({ status: 'PROFESSOR', timestamp: now.toISOString(), note: 'Auto-escalated to Professor' });
+            console.log(`[EscalationEngine] Doubt ${id} escalated to PROFESSOR`);
+            updates++;
+        }
+    });
+
+    if (updates > 0) {
+        // In a real app with Firestore, this would use active listeners. 
+        // With in-memory, the frontend simply needs to poll/refresh to see the new status.
+    }
+}, 10000); // Check every 10 seconds
 
 // Store sessions in memory (in production, use Firestore)
 const sessionsStorage = new Map(); // sessionId -> session object

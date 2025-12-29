@@ -1,24 +1,48 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Search, Send, FileText, MoreVertical, ThumbsUp, MessageSquare, Video, Calendar, Upload, Users, Bell, Command, SearchIcon } from 'lucide-react';
+import { Search, Send, FileText, MoreVertical, ThumbsUp, MessageSquare, Video, Calendar, Upload, Users, Bell, Command } from 'lucide-react';
 import { motion } from 'framer-motion';
-
-const sessions = [
-    { title: "Advanced Neural Networks", time: "10:00 AM", tutor: "Dr. Smith", students: 42, color: "bg-blue-500" },
-    { title: "System Design Patterns", time: "2:00 PM", tutor: "Prof. Johnson", students: 28, color: "bg-purple-500" },
-    { title: "React Architecture", time: "4:30 PM", tutor: "Sarah Lee", students: 156, color: "bg-cyan-500" },
-];
-
-const doubts = [
-    { title: "How does backpropagation actually update weights?", author: "John D.", votes: 24, comments: 5, tag: "AI/ML" },
-    { title: "Best practices for useEffect in React 18?", author: "Emma W.", votes: 12, comments: 2, tag: "Web Dev" },
-    { title: "Understanding Big O notation for graph algorithms", author: "Lucas M.", votes: 8, comments: 1, tag: "DSA" },
-];
+import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
+    const { token } = useAuth();
+    const router = useRouter();
+    const [recentSessions, setRecentSessions] = useState<any[]>([]);
+    const [recentDoubts, setRecentDoubts] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!token) return;
+
+        const fetchData = async () => {
+            try {
+                const [sessionsRes, doubtsRes] = await Promise.all([
+                    api.get('/sessions'),
+                    api.get('/doubts')
+                ]);
+                // Get next 3 sessions
+                setRecentSessions(sessionsRes.data.slice(0, 3));
+                // Get recent 3 doubts
+                setRecentDoubts(doubtsRes.data.slice(0, 4));
+            } catch (e) {
+                console.error("Dashboard fetch error:", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [token]);
+
+    const formatTime = (isoString: string) => {
+        return new Date(isoString).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    };
+
     return (
         <div className="max-w-7xl mx-auto space-y-8 relative">
             {/* Header */}
@@ -73,31 +97,16 @@ export default function Dashboard() {
                                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-xs flex-shrink-0 text-white shadow-lg shadow-blue-500/20">AI</div>
                                 <div className="space-y-2">
                                     <div className="glass-panel bg-white p-5 rounded-2xl rounded-tl-none border border-slate-100 text-sm text-slate-600 leading-relaxed shadow-sm">
-                                        Hello Alex! I've analyzed your latest curriculum on "Neural Networks". I can explain <span className="text-blue-600 font-bold cursor-pointer hover:underline">Backpropagation</span> or generate a visual quiz for <span className="text-purple-600 font-bold cursor-pointer hover:underline">Activation Functions</span>.
+                                        Hello! I'm integrated with your Neural Notebooks. I can answer questions about your documents, upcoming sessions, or recent doubts from the community. How can I help?
                                     </div>
-                                    <span className="text-[10px] text-slate-400 ml-1">10:42 AM</span>
-                                </div>
-                            </motion.div>
-
-                            <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.3 }}
-                                className="flex gap-4 flex-row-reverse max-w-[85%] ml-auto"
-                            >
-                                <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-xs flex-shrink-0 text-white border border-slate-700">Me</div>
-                                <div className="space-y-2">
-                                    <div className="bg-blue-600 p-5 rounded-2xl rounded-tr-none text-sm text-white leading-relaxed shadow-lg shadow-blue-600/20">
-                                        Generate a 3D visualization of the Vanishing Gradient problem. I need to see how it affects deep layers.
-                                    </div>
-                                    <span className="text-[10px] text-slate-400 text-right block mr-1">10:43 AM</span>
+                                    <span className="text-[10px] text-slate-400 ml-1">Just now</span>
                                 </div>
                             </motion.div>
 
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
-                                transition={{ delay: 1.2 }}
+                                transition={{ delay: 0.5 }}
                                 className="relative h-64 rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 group cursor-pointer shadow-2xl"
                             >
                                 {/* Mock 3D Embed */}
@@ -130,44 +139,45 @@ export default function Dashboard() {
                     <div>
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-xl font-bold text-slate-800">Community Doubts</h3>
-                            <Button variant="ghost" className="text-sm text-slate-500 hover:text-blue-600">View All</Button>
+                            <Button variant="ghost" className="text-sm text-slate-500 hover:text-blue-600" onClick={() => router.push('/dashboard/forum')}>View All</Button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {doubts.map((doubt, i) => (
+                            {recentDoubts.length === 0 && !loading && (
+                                <div className="col-span-2 text-center py-8 text-slate-400">No recent doubts found.</div>
+                            )}
+                            {recentDoubts.map((doubt, i) => (
                                 <motion.div
-                                    key={i}
+                                    key={doubt.doubtId || i}
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: 0.1 * i }}
                                 >
                                     <GlassCard className="p-5 flex flex-col gap-4 cursor-pointer group hover:bg-white/80 border-white/60 bg-white/40" hoverEffect intensity="low">
                                         <div className="flex justify-between items-start">
-                                            <span className={`text-[10px] font-bold px-2 py-1 rounded border ${i === 0 ? 'bg-blue-50 border-blue-100 text-blue-600' : 'bg-purple-50 border-purple-100 text-purple-600'}`}>
-                                                {doubt.tag}
+                                            <span className={`text-[10px] font-bold px-2 py-1 rounded border ${i % 2 === 0 ? 'bg-blue-50 border-blue-100 text-blue-600' : 'bg-purple-50 border-purple-100 text-purple-600'}`}>
+                                                {doubt.courseId || 'General'}
                                             </span>
                                             <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
                                         </div>
-                                        <h4 className="text-slate-800 font-bold group-hover:text-blue-600 transition-colors line-clamp-2">{doubt.title}</h4>
+                                        <h4 className="text-slate-800 font-bold group-hover:text-blue-600 transition-colors line-clamp-2 h-10">
+                                            {doubt.content}
+                                        </h4>
                                         <div className="flex items-center justify-between text-xs text-slate-500 mt-auto pt-4 border-t border-slate-200/50">
                                             <span className="flex items-center gap-2">
-                                                <div className="w-5 h-5 rounded-full bg-slate-200" />
-                                                {doubt.author}
+                                                <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold">
+                                                    {(doubt.askedBy?.name || 'U').charAt(0)}
+                                                </div>
+                                                {doubt.askedBy?.name || 'Student'}
                                             </span>
                                             <div className="flex items-center gap-3">
-                                                <span className="flex items-center gap-1 hover:text-green-600"><ThumbsUp className="w-3 h-3" /> {doubt.votes}</span>
-                                                <span className="flex items-center gap-1 hover:text-blue-600"><MessageSquare className="w-3 h-3" /> {doubt.comments}</span>
+                                                <span className="flex items-center gap-1 hover:text-green-600"><ThumbsUp className="w-3 h-3" /> {doubt.votes || 0}</span>
+                                                <span className="flex items-center gap-1 hover:text-blue-600"><MessageSquare className="w-3 h-3" /> {(doubt.replies || []).length}</span>
                                             </div>
                                         </div>
                                     </GlassCard>
                                 </motion.div>
                             ))}
                             {/* Create New Card */}
-                            <GlassCard className="p-5 flex flex-col items-center justify-center gap-2 cursor-pointer border-dashed border-slate-300 bg-transparent hover:bg-blue-50 group hover:border-blue-300" hoverEffect intensity="low">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-blue-100 group-hover:text-blue-600 transition-all">
-                                    <FileText className="w-5 h-5 text-slate-400 group-hover:text-blue-500" />
-                                </div>
-                                <span className="text-sm font-medium text-slate-400 group-hover:text-blue-600">Post New Doubt</span>
-                            </GlassCard>
                         </div>
                     </div>
                 </div>
@@ -222,16 +232,19 @@ export default function Dashboard() {
                             <Calendar className="w-4 h-4 text-slate-400" />
                         </div>
                         <div className="space-y-4">
-                            {sessions.map((s, i) => (
-                                <div key={i} className="group relative p-4 rounded-2xl bg-white/60 hover:bg-white transition-all border border-white/50 hover:border-blue-200 hover:-translate-x-1 cursor-pointer overflow-hidden shadow-sm hover:shadow-md">
-                                    <div className={`absolute top-0 left-0 w-1 h-full ${s.color} opacity-50 group-hover:opacity-100 transition-opacity`} />
+                            {recentSessions.length === 0 && !loading && (
+                                <div className="text-center py-4 text-slate-400 text-sm">No upcoming sessions.</div>
+                            )}
+                            {recentSessions.map((s, i) => (
+                                <div key={s.sessionId || i} className="group relative p-4 rounded-2xl bg-white/60 hover:bg-white transition-all border border-white/50 hover:border-blue-200 hover:-translate-x-1 cursor-pointer overflow-hidden shadow-sm hover:shadow-md">
+                                    <div className={`absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-50 group-hover:opacity-100 transition-opacity`} />
 
                                     <div className="flex justify-between items-start mb-1 pl-2">
-                                        <h3 className="text-sm font-bold text-slate-700 group-hover:text-blue-600 transition-colors">{s.title}</h3>
+                                        <h3 className="text-sm font-bold text-slate-700 group-hover:text-blue-600 transition-colors line-clamp-1">{s.title}</h3>
                                     </div>
                                     <div className="flex items-center gap-3 pl-2 text-xs text-slate-500 mb-3">
-                                        <span className="text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-medium border border-slate-200">{s.time}</span>
-                                        <span>{s.tutor}</span>
+                                        <span className="text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-medium border border-slate-200">{formatTime(s.scheduledTime)}</span>
+                                        <span>{s.tutor?.name}</span>
                                     </div>
 
                                     <div className="flex justify-between items-center text-xs text-slate-400 pl-2 mt-2 pt-2 border-t border-slate-100">
@@ -240,25 +253,13 @@ export default function Dashboard() {
                                                 <div key={j} className="w-5 h-5 rounded-full border-2 border-white bg-slate-300" />
                                             ))}
                                         </div>
-                                        <span className="flex items-center gap-1 group-hover:text-blue-500 transition-colors">
-                                            <Users className="w-3 h-3" /> {s.students} signed up
-                                        </span>
+                                        <span className="text-[10px] uppercase font-bold tracking-wider text-blue-500 group-hover:underline">Join Now</span>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                    </GlassCard>
-
-                    <GlassCard className="p-6 bg-gradient-to-br from-indigo-600 to-purple-700 border-none text-white shadow-xl shadow-indigo-500/20" hoverEffect>
-                        <div className="flex items-start gap-4">
-                            <div className="p-3 bg-white/20 rounded-xl">
-                                <Upload className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-white">Submit Assignment</h3>
-                                <p className="text-xs text-indigo-100 mt-1 mb-3 leading-relaxed">Drag and drop your project files here for AI evaluation.</p>
-                                <Button className="w-full h-9 text-xs bg-white text-indigo-600 hover:bg-indigo-50 border-none">Browse Files</Button>
-                            </div>
+                        <div className="mt-6 pt-4 border-t border-slate-200/50 text-center">
+                            <Button variant="ghost" className="text-xs w-full hover:bg-white" onClick={() => router.push('/dashboard/sessions')}>View Schedule</Button>
                         </div>
                     </GlassCard>
                 </div>

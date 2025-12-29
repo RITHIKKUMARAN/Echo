@@ -22,7 +22,7 @@ interface Session {
 }
 
 export default function SessionsPage() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [sessions, setSessions] = useState<Session[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
@@ -36,6 +36,13 @@ export default function SessionsPage() {
     const [scheduledTime, setScheduledTime] = useState('');
     const [duration, setDuration] = useState('60');
     const [meetLink, setMeetLink] = useState('');
+
+    // Auto-populate tutor name from logged-in user
+    useEffect(() => {
+        if (user) {
+            setTutorName(user.displayName || user.email?.split('@')[0] || '');
+        }
+    }, [user]);
 
     useEffect(() => {
         if (!token) return;

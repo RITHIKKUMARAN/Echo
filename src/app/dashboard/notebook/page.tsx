@@ -4,17 +4,22 @@ import { useState, useRef, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Search, Send, Library, BookOpen, Mic, Sparkles, Loader2, Bot, User, Paperclip, FileText } from 'lucide-react';
+import { Search, Send, Library, X, Mic, MicOff, Sparkles, Bot, User, Paperclip, FileText, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-// import { ref, uploadBytes } from 'firebase/storage';
-// import { storage } from '@/lib/firebase';
 
 interface Message {
     role: 'user' | 'model';
     content: string;
     timestamp?: string;
+}
+
+interface UploadedDocument {
+    name: string;
+    size: number;
+    uploadedAt: string;
+    chatId: string;
 }
 
 export default function NotebookPage() {
@@ -24,8 +29,12 @@ export default function NotebookPage() {
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+    const [uploadedDocs, setUploadedDocs] = useState<UploadedDocument[]>([]);
+    const [showLibrary, setShowLibrary] = useState(false);
+    const [isListening, setIsListening] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const recognitionRef = useRef<any>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -34,6 +43,55 @@ export default function NotebookPage() {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Initialize Speech Recognition
+    useEffect(() => {
+        if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+            const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = false;
+            recognitionRef.current.interimResults = false;
+            recognitionRef.current.lang = 'en-US';
+
+            recognitionRef.current.onresult = (event: any) => {
+                const transcript = event.results[0][0].transcript;
+                setInput(prev => prev + (prev ? ' ' : '') + transcript);
+                setIsListening(false);
+            };
+
+            recognitionRef.current.onerror = () => {
+                setIsListening(false);
+            };
+
+            recognitionRef.current.onend = () => {
+                setIsListening(false);
+            };
+        }
+    }, []);
+
+    const toggleVoiceInput = () => {
+        if (!recognitionRef.current) {
+            alert('Voice input not supported in your browser');
+            return;
+        }
+
+        if (isListening) {
+            try {
+                recognitionRef.current.stop();
+            } catch (e) {
+                console.error('Stop error:', e);
+            }
+            setIsListening(false);
+        } else {
+            try {
+                recognitionRef.current.start();
+                setIsListening(true);
+            } catch (e) {
+                console.error('Start error:', e);
+                setIsListening(false);
+            }
+        }
+    };
 
     // Initial Greeting
     useEffect(() => {
@@ -50,10 +108,9 @@ export default function NotebookPage() {
         if (!file || !token) return;
 
         setUploading(true);
-        // Optimistic UI update
         setMessages(prev => [...prev, {
             role: 'user',
-            content: `Uploading ${file.name}...`
+            content: `📄 Uploading ${file.name}...`
         }]);
 
         try {
@@ -61,27 +118,27 @@ export default function NotebookPage() {
             formData.append('file', file);
             formData.append('courseId', 'default_course_id');
 
-            // Use the centralized API client (it handles Auth header)
-            // We need to override content-type to let browser set boundary
             const response = await api.post('/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
 
-            console.log('Upload success:', response.data);
-
-            // Store the chatId from upload response for context-aware chat
             if (response.data.chatId) {
                 setCurrentChatId(response.data.chatId);
-                console.log('Using chatId for document context:', response.data.chatId);
+
+                setUploadedDocs(prev => [...prev, {
+                    name: file.name,
+                    size: file.size,
+                    uploadedAt: new Date().toISOString(),
+                    chatId: response.data.chatId
+                }]);
             }
 
             setMessages(prev => [...prev, {
                 role: 'model',
-                content: `✅ Successfully processed "${file.name}". Ready to chat!\n\nExtracted ${response.data.textLength} characters from the document.`
+                content: `✅ Successfully processed "${file.name}"\n\nExtracted ${response.data.textLength} characters. You can now ask me questions about this document!`
             }]);
 
         } catch (error: any) {
-            console.error('Upload error:', error);
             setMessages(prev => [...prev, {
                 role: 'model',
                 content: `❌ Failed to upload ${file.name}: ${error.response?.data?.error || error.message}`
@@ -93,59 +150,28 @@ export default function NotebookPage() {
     };
 
     const handleSend = async () => {
-        if (!input.trim()) {
-            console.log('No input to send');
-            return;
-        }
+        if (!input.trim()) return;
 
-        if (!token) {
-            console.error('No auth token available');
-            setMessages(prev => [...prev, {
-                role: 'model',
-                content: 'Error: Not authenticated. Please refresh the page.'
-            }]);
-            return;
-        }
-
-        console.log('Sending message:', input);
-        const userMsg: Message = { role: 'user', content: input };
-        setMessages(prev => [...prev, userMsg]);
+        const userMessage = input.trim();
         setInput('');
+        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
         setLoading(true);
 
         try {
-            let chatId = currentChatId;
-
-            // If no chat exists, create one
-            if (!chatId) {
-                console.log('Creating new chat...');
-                const newChat = await api.post('/chats', {
-                    title: input.substring(0, 30),
-                    courseId: 'default_course_id'
-                });
-                chatId = newChat.data.chatId;
-                setCurrentChatId(chatId);
-                console.log('Chat created:', chatId);
-            }
-
-            // Send message
-            console.log('Sending to API:', chatId);
-            const response = await api.post(`/chats/${chatId}/message`, {
-                message: userMsg.content,
-                courseId: 'default_course_id'
+            const response = await api.post('/chat', {
+                message: userMessage,
+                chatId: currentChatId
             });
 
-            console.log('AI Response received:', response.data);
-            const aiMsg: Message = {
-                role: 'model',
-                content: response.data.response,
-                // sources: response.data.sources 
-            };
-            setMessages(prev => [...prev, aiMsg]);
+            if (response.data.chatId && !currentChatId) {
+                setCurrentChatId(response.data.chatId);
+            }
 
+            setMessages(prev => [...prev, {
+                role: 'model',
+                content: response.data.response
+            }]);
         } catch (error: any) {
-            console.error('Chat Error:', error);
-            console.error('Error details:', error.response?.data);
             setMessages(prev => [...prev, {
                 role: 'model',
                 content: `Error: ${error.response?.data?.error || error.message || 'Failed to get AI response'}`
@@ -155,22 +181,34 @@ export default function NotebookPage() {
         }
     };
 
-    // Load Chats on Mount
-    useEffect(() => {
-        if (!token) return;
-        // Fetch last active chat or just start new (MVP: Start new for now, or fetch list)
-        // For this page, let's keep it simple: Start fresh, but maybe fetch history if user selects from sidebar
-    }, [token]);
+    const removeDocument = (chatId: string) => {
+        setUploadedDocs(prev => prev.filter(doc => doc.chatId !== chatId));
+        if (currentChatId === chatId) {
+            setCurrentChatId(null);
+        }
+    };
 
     return (
-        <div className="h-[calc(100vh-8rem)] flex flex-col gap-6">
-            <header className="flex items-center justify-between">
+        <div className="h-[calc(100vh-6rem)] flex flex-col gap-6">
+            {/* Header */}
+            <header className="flex-shrink-0 flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Neural Notebook</h1>
                     <p className="text-slate-500 text-sm mt-1">Your AI-powered research assistant and knowledge base</p>
                 </div>
                 <div className="flex gap-3">
-                    <Button variant="outline" className="gap-2 bg-white"><Library className="w-4 h-4" /> Library</Button>
+                    <Button
+                        variant="outline"
+                        className="gap-2 bg-white relative"
+                        onClick={() => setShowLibrary(!showLibrary)}
+                    >
+                        <Library className="w-4 h-4" /> Library
+                        {uploadedDocs.length > 0 && (
+                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                                {uploadedDocs.length}
+                            </span>
+                        )}
+                    </Button>
                     <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => {
                         setMessages([]);
                         setCurrentChatId(null);
@@ -180,109 +218,145 @@ export default function NotebookPage() {
                 </div>
             </header>
 
-            <div className="grid grid-cols-12 gap-6 flex-1 min-h-0">
-                {/* Sidebar History */}
-                <div className="hidden lg:block col-span-3 space-y-4">
-                    <GlassCard className="h-full bg-white/60 border-slate-200/50 flex flex-col p-4">
-                        <div className="relative mb-4">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <Input placeholder="Search notes..." className="pl-9 h-9 bg-white border-slate-200" />
-                        </div>
-                        <div className="space-y-1 overflow-y-auto flex-1 custom-scrollbar pr-2">
-                            {/* Placeholder for history - in real app fetch from /chats */}
-                            <div className="text-center text-slate-400 text-sm mt-10">
-                                Upload your PDFs and PPTs to get started with AI-powered study assistance.
+            {/* Library Sidebar Modal */}
+            <AnimatePresence>
+                {showLibrary && (
+                    <motion.div
+                        initial={{ opacity: 0, x: 300 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 300 }}
+                        className="fixed right-8 top-24 w-80 h-[calc(100vh-12rem)] z-50"
+                    >
+                        <GlassCard className="h-full bg-white/95 border-slate-200 shadow-2xl p-4 flex flex-col">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <FileText className="w-5 h-5" /> Uploaded Documents
+                                </h3>
+                                <button onClick={() => setShowLibrary(false)} className="p-1 hover:bg-slate-100 rounded">
+                                    <X className="w-4 h-4" />
+                                </button>
                             </div>
-                        </div>
-                    </GlassCard>
-                </div>
+                            <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+                                {uploadedDocs.length === 0 ? (
+                                    <div className="text-center text-slate-400 text-sm mt-10">
+                                        No documents uploaded yet.<br />Upload PDFs or PPTs to get started!
+                                    </div>
+                                ) : (
+                                    uploadedDocs.map((doc, i) => (
+                                        <div key={i} className="p-3 bg-white rounded-lg border border-slate-200 hover:shadow-md transition-shadow">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
+                                                    <p className="text-xs text-slate-400 mt-1">
+                                                        {(doc.size / 1024).toFixed(1)} KB • {new Date(doc.uploadedAt).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeDocument(doc.chatId)}
+                                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </GlassCard>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-                {/* Main Chat Area */}
-                <div className="col-span-12 lg:col-span-9 h-full">
-                    <GlassCard className="h-full flex flex-col relative border-white/60 bg-white/50 backdrop-blur-xl shadow-xl" intensity="medium">
+            {/* Main Chat Container - Properly Structured */}
+            <div className="flex-1 overflow-hidden">
+                <GlassCard className="h-full flex flex-col border-white/60 bg-white/50 backdrop-blur-xl shadow-xl" intensity="medium">
 
-                        {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                            {messages.map((msg, i) => (
-                                <motion.div
-                                    key={i}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
-                                >
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-purple-100 text-purple-600'}`}>
-                                        {msg.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
-                                    </div>
-                                    <div className={`max-w-[80%] p-4 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-100 shadow-sm rounded-tl-none text-slate-700'}`}>
-                                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
-                                    </div>
-                                </motion.div>
-                            ))}
-                            {(loading || uploading) && (
-                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
-                                    <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
-                                        <Bot className="w-5 h-5" />
-                                    </div>
-                                    <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-tl-none p-4 flex items-center gap-2">
-                                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" />
-                                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                                        {uploading && <span className="text-xs text-slate-400 ml-2">Uploading & Processing...</span>}
-                                    </div>
-                                </motion.div>
-                            )}
-                            <div ref={messagesEndRef} />
-                        </div>
-
-                        {/* Input Area */}
-                        <div className="p-4 border-t border-slate-200/50 bg-white/40 backdrop-blur-md">
-                            <form
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    handleSend();
-                                }}
-                                className="relative group max-w-4xl mx-auto"
+                    {/* Messages Area - Scrollable */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                        {messages.map((msg, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                             >
-                                <Input
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    placeholder="Ask Echo anything or upload a file..."
-                                    className="pr-24 h-14 bg-white/80 border-slate-200 focus:border-blue-500 transition-all text-base pl-12 text-slate-800 shadow-inner rounded-2xl"
-                                    disabled={loading || uploading}
-                                />
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    className="hidden"
-                                    accept=".pdf,.ppt,.pptx,.doc,.docx,.txt"
-                                    onChange={handleFileUpload}
-                                />
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-purple-100 text-purple-600'}`}>
+                                    {msg.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+                                </div>
+                                <div className={`max-w-[80%] p-4 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-100 shadow-sm rounded-tl-none text-slate-700'}`}>
+                                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                                </div>
+                            </motion.div>
+                        ))}
+                        {(loading || uploading) && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
+                                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                                    <Bot className="w-5 h-5" />
+                                </div>
+                                <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-tl-none p-4 flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" />
+                                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                    {uploading && <span className="text-xs text-slate-400 ml-2">Processing...</span>}
+                                </div>
+                            </motion.div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
 
+                    {/* Input Area - Fixed at Bottom */}
+                    <div className="border-t border-slate-200/50 bg-white/40 backdrop-blur-md p-4 flex-shrink-0">
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                handleSend();
+                            }}
+                            className="relative max-w-4xl mx-auto"
+                        >
+                            <Input
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder="Ask Echo anything or upload a file..."
+                                className="pr-28 h-14 bg-white/80 border-slate-200 focus:border-blue-500 transition-all text-base pl-12 text-slate-800 shadow-inner rounded-2xl"
+                                disabled={loading || uploading}
+                            />
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept=".pdf,.ppt,.pptx,.doc,.docx,.txt"
+                                onChange={handleFileUpload}
+                            />
+
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600 rounded-lg transition-colors"
+                                title="Upload PDF/PPT"
+                            >
+                                <Paperclip className="w-5 h-5" />
+                            </button>
+
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
                                 <button
                                     type="button"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600 rounded-lg transition-colors"
-                                    title="Upload PDF/PPT"
+                                    onClick={toggleVoiceInput}
+                                    className={`p-2 rounded-lg transition-all ${isListening ? 'bg-red-100 text-red-600' : 'text-slate-400 hover:bg-slate-100'}`}
+                                    title="Voice Input"
                                 >
-                                    <Paperclip className="w-5 h-5" />
+                                    {isListening ? <MicOff className="w-5 h-5 animate-pulse" /> : <Mic className="w-5 h-5" />}
                                 </button>
-
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                                    <button type="button" className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors">
-                                        <Mic className="w-5 h-5" />
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={loading || uploading || !input.trim()}
-                                        className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-50 disabled:active:scale-100"
-                                    >
-                                        <Send className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </GlassCard>
-                </div>
+                                <button
+                                    type="submit"
+                                    disabled={loading || uploading || !input.trim()}
+                                    className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                                >
+                                    <Send className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </GlassCard>
             </div>
         </div>
     );

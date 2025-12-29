@@ -21,7 +21,7 @@ const vertexAI = new VertexAI({ project, location });
 
 // Gemini 1.5 Flash model
 const model = vertexAI.getGenerativeModel({
-    model: 'gemini-1.5-flash-preview-0514',
+    model: 'gemini-2.5-flash',
     generationConfig: {
         maxOutputTokens: 2048,
         temperature: 0.7,
