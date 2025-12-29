@@ -17,7 +17,7 @@ app.use(express.json({ limit: '50mb' }));
 // Initialize Gemini AI (using the simpler @google/generative-ai package)
 // You'll need to set your API key
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE');
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
 // File upload setup
 const storage = multer.memoryStorage();
@@ -275,18 +275,65 @@ app.post('/echo-1928rn/us-central1/api/doubts', async (req, res) => {
     }
 });
 
+// Store sessions in memory (in production, use Firestore)
+const sessionsStorage = new Map(); // sessionId -> session object
+let sessionCounter = 0;
+
 // Get teaching sessions
 app.get('/echo-1928rn/us-central1/api/sessions', (req, res) => {
-    res.json([
-        {
-            sessionId: 'session_1',
-            title: 'Advanced Neural Networks',
-            tutor: { name: 'Dr. Smith', email: 'smith@college.edu' },
-            scheduledTime: new Date(Date.now() + 7200000).toISOString(),
-            meetLink: 'https://meet.google.com/sample-link',
-            attendees: 15
+    // Prevent caching
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+
+    // Return all sessions as array, sorted by scheduled time
+    const allSessions = Array.from(sessionsStorage.values())
+        .sort((a, b) => new Date(a.scheduledTime) - new Date(b.scheduledTime));
+
+    console.log('Fetching sessions, count:', allSessions.length);
+    res.json(allSessions);
+});
+
+// Create teaching session with Google Meet link
+app.post('/echo-1928rn/us-central1/api/sessions', async (req, res) => {
+    try {
+        const { title, tutorName, scheduledTime, duration, courseId, meetLink: providedLink } = req.body;
+
+        if (!title || !scheduledTime || !providedLink) {
+            return res.status(400).json({ error: 'Title, scheduled time, and meeting link are required' });
         }
-    ]);
+
+        console.log('Creates Session:', title);
+        console.log('RECEIVED meetLink:', providedLink); // DEBUG LOG
+
+        // Use the provided Google Meet link
+        const meetLink = providedLink ? providedLink.trim() : '';
+
+        const sessionId = 'session_' + (++sessionCounter) + '_' + Date.now();
+        const session = {
+            sessionId,
+            title,
+            tutor: {
+                name: tutorName || 'Instructor',
+                email: 'instructor@college.edu'
+            },
+            scheduledTime: new Date(scheduledTime).toISOString(),
+            duration: duration || 60, // in minutes
+            meetLink,
+            courseId: courseId || 'general',
+            attendees: 0,
+            createdAt: new Date().toISOString(),
+            status: 'SCHEDULED'
+        };
+
+        // Store the session
+        sessionsStorage.set(sessionId, session);
+        console.log('Session created:', sessionId);
+        console.log('SAVED meetLink:', session.meetLink); // DEBUG LOG
+
+        res.json(session);
+    } catch (error) {
+        console.error('Error creating session:', error);
+        res.status(500).json({ error: 'Failed to create session', details: error.message });
+    }
 });
 
 app.listen(PORT, () => {
