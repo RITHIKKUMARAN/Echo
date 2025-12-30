@@ -4,10 +4,11 @@ import { useState, useRef, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Search, Send, Library, X, Mic, MicOff, Sparkles, Bot, User, Paperclip, FileText, Trash2 } from 'lucide-react';
+import { Search, Send, Library, X, Mic, MicOff, Sparkles, Bot, User, Paperclip, FileText, Trash2, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import firestoreService from '@/lib/firestoreService';
 
 interface Message {
     role: 'user' | 'model';
@@ -98,10 +99,37 @@ export default function NotebookPage() {
         if (messages.length === 0) {
             setMessages([{
                 role: 'model',
-                content: `Hi ${user?.displayName?.split(' ')[0] || 'there'}! I'm your AI research assistant. Upload your course materials (PDF, PPT) and I'll analyze them for you.`
+                content: '👋 Hi! I\'m Echo, your AI companion \n\n📚 Upload a PDF, PPT, or DOCX to get started, or ask me anything about your studies! 💡',
+                timestamp: new Date().toISOString()
             }]);
         }
-    }, [user, messages.length]);
+    }, []);
+
+    // Load user's previously uploaded documents from Firestore
+    useEffect(() => {
+        const loadUserDocuments = async () => {
+            if (!user?.uid) return;
+
+            try {
+                const docs = await firestoreService.getUserDocuments(user.uid);
+
+                if (docs.length > 0) {
+                    setUploadedDocs(docs.map(d => ({
+                        name: d.filename,
+                        size: d.fileSize,
+                        uploadedAt: d.uploadedAt?.toDate ? d.uploadedAt.toDate().toISOString() : new Date().toISOString(),
+                        chatId: d.chatId
+                    })));
+
+                    console.log('✅ Loaded', docs.length, 'documents from Firestore');
+                }
+            } catch (error) {
+                console.error('❌ Error loading documents:', error);
+            }
+        };
+
+        loadUserDocuments();
+    }, [user]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -125,20 +153,39 @@ export default function NotebookPage() {
             if (response.data.chatId) {
                 setCurrentChatId(response.data.chatId);
 
-                setUploadedDocs(prev => [...prev, {
+                const docData = {
                     name: file.name,
                     size: file.size,
                     uploadedAt: new Date().toISOString(),
                     chatId: response.data.chatId
-                }]);
+                };
+
+                setUploadedDocs(prev => [...prev, docData]);
+
+                // IMPORTANT: Save document to Firestore (permanent storage)
+                await firestoreService.saveDocument({
+                    chatId: response.data.chatId,
+                    filename: file.name,
+                    fileType: file.type || file.name.split('.').pop() || 'unknown',
+                    fileSize: file.size,
+                    uploadedBy: {
+                        name: user?.displayName || user?.email?.split('@')[0] || 'Student',
+                        uid: user?.uid || 'anonymous'
+                    },
+                    extractedText: response.data.text || '',
+                    chatHistory: []
+                });
+
+                console.log('✅ Document saved to Firestore:', file.name);
             }
 
             setMessages(prev => [...prev, {
                 role: 'model',
-                content: `✅ Successfully processed "${file.name}"\n\nExtracted ${response.data.textLength} characters. You can now ask me questions about this document!`
+                content: `✅ Successfully processed "${file.name}"\n\nExtracted ${response.data.textLength} characters. Saved permanently to Firebase! You can now ask me questions about this document!`
             }]);
 
         } catch (error: any) {
+            console.error('❌ Upload error:', error);
             setMessages(prev => [...prev, {
                 role: 'model',
                 content: `❌ Failed to upload ${file.name}: ${error.response?.data?.error || error.message}`

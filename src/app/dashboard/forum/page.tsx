@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { MessageSquare, ThumbsUp, Eye, Search, PlusCircle, CheckCircle, HelpCircle, User, Shield, GraduationCap, X } from 'lucide-react';
+import { MessageSquare, ThumbsUp, Eye, Search, PlusCircle, CheckCircle, HelpCircle, User, Shield, GraduationCap, X, Database } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { AnimatePresence, motion } from 'framer-motion';
+import firestoreService from '@/lib/firestoreService';
 
 interface Reply {
     replyId: string;
@@ -52,10 +53,27 @@ export default function ForumPage() {
 
     const fetchDoubts = async () => {
         try {
-            const res = await api.get('/doubts');
-            setDoubts(res.data);
+            // PRIMARY: Fetch from Firestore (permanent storage)
+            const firestoreDoubts = await firestoreService.getDoubts({ limit: 100 });
+
+            if (firestoreDoubts.length > 0) {
+                setDoubts(firestoreDoubts as any);
+                console.log('✅ Loaded', firestoreDoubts.length, 'doubts from Firestore');
+            } else {
+                // FALLBACK: If Firestore is empty, try API
+                const res = await api.get('/doubts');
+                setDoubts(res.data);
+                console.log('⚠️ Loaded from API (Firestore empty)');
+            }
         } catch (error) {
-            console.error('Failed to fetch doubts:', error);
+            console.error('❌ Failed to fetch doubts:', error);
+            // Last fallback: try API
+            try {
+                const res = await api.get('/doubts');
+                setDoubts(res.data);
+            } catch (apiError) {
+                console.error('❌ API also failed');
+            }
         } finally {
             setLoading(false);
         }
@@ -66,16 +84,49 @@ export default function ForumPage() {
 
         setCreating(true);
         try {
-            await api.post('/doubts', {
-                courseId: 'CS101', // Example course
+            const doubtData = {
+                courseId: 'CS101',
                 content: newDoubtContent,
-                userName: user?.displayName || user?.email?.split('@')[0] || 'Student',
-                userUid: user?.uid || 'anonymous'
+                askedBy: {
+                    name: user?.displayName || user?.email?.split('@')[0] || 'Student',
+                    uid: user?.uid || 'anonymous',
+                    email: user?.email || undefined
+                },
+                tags: []
+            };
+
+            // Save to backend API (for AI response)
+            const apiResponse = await api.post('/doubts', {
+                ...doubtData,
+                userName: doubtData.askedBy.name,
+                userUid: doubtData.askedBy.uid
             });
+
+            // IMPORTANT: Also save to Firestore (permanent storage)
+            await firestoreService.createDoubt({
+                ...doubtData,
+                aiAnswer: apiResponse.data.aiAnswer || '',
+                resolved: false,
+                votes: 0,
+                views: 0,
+                replies: [],
+                status: 'AI',
+                history: [{
+                    status: 'AI',
+                    timestamp: new Date(),
+                    note: 'AI Generated Answer'
+                }]
+            });
+
             setNewDoubtContent('');
             setShowCreate(false);
-            fetchDoubts();
+
+            // Refresh to show new doubt
+            await fetchDoubts();
+
+            console.log('✅ Doubt saved to both API and Firestore!');
         } catch (error) {
+            console.error('❌ Failed to post doubt:', error);
             alert('Failed to post doubt');
         } finally {
             setCreating(false);
@@ -84,11 +135,20 @@ export default function ForumPage() {
 
     const handleStudentAction = async (doubtId: string, action: 'SOLVED' | 'CONFUSED') => {
         try {
-            await api.post(`/doubts/${doubtId}/action`, { action });
-            fetchDoubts();
-            if (action === 'CONFUSED') setExpandedDoubtId(doubtId);
+            // IMPORTANT: Update Firestore directly (no API call needed)
+            if (action === 'SOLVED') {
+                await firestoreService.resolveDoubt(doubtId);
+                console.log('✅ Doubt marked as RESOLVED in Firestore');
+            } else if (action === 'CONFUSED') {
+                await firestoreService.updateDoubtStatus(doubtId, 'OPEN', 'Student escalated to forum');
+                setExpandedDoubtId(doubtId);
+                console.log('✅ Doubt escalated to OPEN in Firestore');
+            }
+
+            await fetchDoubts();
         } catch (error) {
-            alert('Action failed');
+            console.error('❌ Action failed:', error);
+            alert('Action failed - please try again');
         }
     };
 
@@ -97,19 +157,28 @@ export default function ForumPage() {
         if (!content?.trim()) return;
 
         try {
-            // Simulator: Randomly decide if replier is a Professor or Student for demo
+            // Determine if replier is a Professor (for demo, random)
             const isProfessor = Math.random() > 0.8;
 
-            await api.post(`/doubts/${doubtId}/reply`, {
+            // IMPORTANT: Save reply to Firestore (permanent storage)
+            await firestoreService.addReplyToDoubt(doubtId, {
                 content,
-                authorName: user?.displayName || user?.email?.split('@')[0] || 'Anonymous',
-                isProfessor
+                repliedBy: {
+                    name: user?.displayName || user?.email?.split('@')[0] || 'Anonymous',
+                    uid: user?.uid || 'anonymous',
+                    role: isProfessor ? 'PROFESSOR' : 'STUDENT'
+                },
+                isAi: false,
+                isAccepted: isProfessor // Auto-accept professor replies
             });
 
             setReplyContent(prev => ({ ...prev, [doubtId]: '' }));
-            fetchDoubts();
+            await fetchDoubts();
+
+            console.log('✅ Reply saved to Firestore!');
         } catch (error) {
-            alert('Reply failed');
+            console.error('❌ Failed to submit reply:', error);
+            alert('Reply failed - please try again');
         }
     };
 
@@ -141,10 +210,16 @@ export default function ForumPage() {
                 <div className="flex items-start gap-3">
                     <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
                     <div className="flex-1">
-                        <h3 className="font-bold text-blue-900 mb-1">Smart Escalation System Active</h3>
+                        <div className="flex items-center gap-3 mb-1">
+                            <h3 className="font-bold text-blue-900">Smart Escalation System Active</h3>
+                            <span className="flex items-center gap-1.5 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full border border-green-200">
+                                <Database className="w-3 h-3" />
+                                Firestore Connected
+                            </span>
+                        </div>
                         <p className="text-sm text-blue-700 leading-relaxed">
                             Your doubts are automatically escalated: <span className="font-semibold">AI → Open Forum (all students) → Senior Students (30min) → Professor (2hr)</span>.
-                            No doubt goes unanswered! 🚀
+                            All discussions permanently stored in Firebase! 🚀
                         </p>
                     </div>
                 </div>
@@ -214,8 +289,8 @@ export default function ForumPage() {
                                                     </div>
                                                     <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-line">{doubt.aiAnswer}</p>
 
-                                                    {/* Confirmation Buttons (Only if AI status) */}
-                                                    {doubt.status === 'AI' && (
+                                                    {/* Confirmation Buttons (Only if AI status AND user is the owner) */}
+                                                    {doubt.status === 'AI' && doubt.askedBy.uid === user?.uid && (
                                                         <div className="mt-4 flex gap-3 pt-4 border-t border-slate-100">
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleStudentAction(doubt.doubtId, 'SOLVED'); }}

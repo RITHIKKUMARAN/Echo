@@ -20,7 +20,7 @@ const auth = getAuth();
 
 // API Client
 const api = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/echo-1928rn/us-central1/api', // Fallback to emulator
+    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api', // Local backend server
     headers: {
         'Content-Type': 'application/json',
     },

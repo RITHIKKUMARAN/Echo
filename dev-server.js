@@ -19,7 +19,7 @@ const project = 'echo-1928rn';
 const location = 'us-central1';
 const vertexAI = new VertexAI({ project, location });
 
-// Gemini 1.5 Flash model
+
 const model = vertexAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
     generationConfig: {
@@ -29,12 +29,12 @@ const model = vertexAI.getGenerativeModel({
     },
 });
 
-// Root
+
 app.get('/', (req, res) => {
     res.send('Echo Platform API - Dev Server Running');
 });
 
-// Firebase Functions path structure: /project-id/region/function-name
+
 app.get('/echo-1928rn/us-central1/api/', (req, res) => {
     res.send('Campus AI Platform API is running');
 });

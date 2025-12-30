@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Search, X, Send, FileText, MoreVertical, ThumbsUp, MessageSquare, Video, Calendar, TrendingUp, Command, Bell, User, BookOpen, Zap, Activity } from 'lucide-react';
+import { Search, X, Send, FileText, MoreVertical, ThumbsUp, MessageSquare, Video, Calendar, TrendingUp, Command, Bell, User, BookOpen, Zap, Activity, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 export default function Dashboard() {
     const { token, user } = useAuth();
@@ -61,6 +63,15 @@ export default function Dashboard() {
 
     const formatTime = (isoString: string) => {
         return new Date(isoString).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    };
+
+    const handleSignOut = async () => {
+        try {
+            await signOut(auth);
+            router.push('/');
+        } catch (error) {
+            console.error('Sign out error:', error);
+        }
     };
 
     const notifications = [
@@ -159,7 +170,13 @@ export default function Dashboard() {
                                         >
                                             Settings
                                         </button>
-                                        <button className="w-full text-left px-3 py-2 hover:bg-slate-50 rounded-lg text-sm text-red-600">Sign Out</button>
+                                        <button
+                                            onClick={handleSignOut}
+                                            className="w-full text-left px-3 py-2 hover:bg-red-50 rounded-lg text-sm text-red-600 flex items-center gap-2"
+                                        >
+                                            <LogOut className="w-4 h-4" />
+                                            Sign Out
+                                        </button>
                                     </div>
                                 </motion.div>
                             )}

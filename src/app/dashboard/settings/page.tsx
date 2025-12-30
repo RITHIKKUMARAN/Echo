@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { User, Lock, Mail, Save, Camera, ArrowLeft, Shield, Bell, Globe } from 'lucide-react';
+import { User, Lock, Mail, Save, Camera, ArrowLeft, Shield, Bell, Globe, LogOut } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { updateProfile, updatePassword, updateEmail } from 'firebase/auth';
+import { updateProfile, updatePassword, updateEmail, signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 export default function SettingsPage() {
     const { user } = useAuth();
@@ -86,6 +87,16 @@ export default function SettingsPage() {
         }
     };
 
+    const handleSignOut = async () => {
+        try {
+            await signOut(auth);
+            router.push('/');
+        } catch (error: any) {
+            console.error('Sign out error:', error);
+            setMessage({ type: 'error', text: 'Failed to sign out' });
+        }
+    };
+
     const tabs = [
         { id: 'profile', label: 'Profile', icon: User },
         { id: 'security', label: 'Security', icon: Shield },
@@ -131,8 +142,8 @@ export default function SettingsPage() {
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}
                                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === tab.id
-                                                ? 'bg-blue-600 text-white'
-                                                : 'text-slate-600 hover:bg-slate-100'
+                                            ? 'bg-blue-600 text-white'
+                                            : 'text-slate-600 hover:bg-slate-100'
                                             }`}
                                     >
                                         <Icon className="w-5 h-5" />
@@ -302,6 +313,28 @@ export default function SettingsPage() {
                                     <Shield className="w-4 h-4" />
                                     {loading ? 'Updating...' : 'Change Password'}
                                 </Button>
+
+                                {/* Signout Button */}
+                                <div className="mt-8 pt-8 border-t border-slate-200">
+                                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4">
+                                        <div className="flex items-start gap-3">
+                                            <LogOut className="w-5 h-5 text-red-600 mt-0.5" />
+                                            <div>
+                                                <h3 className="font-semibold text-red-900 mb-1">Sign Out</h3>
+                                                <p className="text-sm text-red-700">
+                                                    Sign out of your account and return to the login page
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        onClick={handleSignOut}
+                                        className="w-full bg-red-600 hover:bg-red-700 text-white gap-2"
+                                    >
+                                        <LogOut className="w-4 h-4" />
+                                        Sign Out
+                                    </Button>
+                                </div>
                             </div>
                         </GlassCard>
                     )}

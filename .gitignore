@@ -57,14 +57,14 @@ Desktop.ini
 *.swp
 *.swo
 
-# markdown
-*.md
-
 # Firebase
 .firebase/
 firebase-debug.log
 ui-debug.log
 firestore-debug.log
 pubsub-debug.log
-.env
 .env.local
+.env
+*.md
+.md
+.env.local.template
