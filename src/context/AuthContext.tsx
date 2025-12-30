@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { apiRequest } from '@/lib/api';
+import { peersService } from '@/lib/peersService';
 
 interface AuthContextType {
     user: User | null;
@@ -33,13 +33,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 setToken(idToken);
                 setUser(currentUser);
 
-                // Optional: Sync user to backend on every fresh login/reload to ensure DB is up to date
+                // Sync user profile to Firestore (Offline-first approach)
                 try {
-                    await apiRequest('/users/sync', 'POST', {
-                        role: 'student' // Default, or fetch from local storage if previously set
-                    }, idToken);
+                    await peersService.createUserProfile({
+                        userId: currentUser.uid,
+                        displayName: currentUser.displayName || 'Student',
+                        email: currentUser.email || '',
+                        photoURL: currentUser.photoURL || undefined
+                    });
                 } catch (e) {
-                    console.warn("Could not sync user to backend (backend may not be running):", e);
+                    console.error("Error syncing user profile:", e);
                 }
 
             } else {

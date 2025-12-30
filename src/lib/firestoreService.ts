@@ -3,6 +3,7 @@ import {
     collection,
     doc,
     addDoc,
+    setDoc,
     getDoc,
     getDocs,
     updateDoc,
@@ -412,10 +413,7 @@ export async function getSessions(filters?: {
     limit?: number;
 }): Promise<Session[]> {
     try {
-        let q = query(
-            collection(db, 'sessions'),
-            orderBy('scheduledAt', 'desc')
-        );
+        let q = query(collection(db, 'sessions'));
 
         if (filters?.status) {
             q = query(q, where('status', '==', filters.status));
@@ -426,10 +424,18 @@ export async function getSessions(filters?: {
         }
 
         const snapshot = await getDocs(q);
-        const sessions = snapshot.docs.map(doc => ({
-            sessionId: doc.id,
-            ...doc.data()
-        })) as Session[];
+        const sessions = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                sessionId: doc.id,
+                ...data,
+                scheduledAt: data.scheduledAt?.toDate ? data.scheduledAt.toDate().toISOString() : new Date().toISOString(),
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
+            };
+        }) as Session[];
+
+        // Sort by scheduledAt in JavaScript (newest/future first)
+        sessions.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
 
         console.log('✅ Fetched', sessions.length, 'sessions from Firestore');
         return sessions;

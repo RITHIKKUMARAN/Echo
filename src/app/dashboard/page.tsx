@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Search, X, Send, FileText, MoreVertical, ThumbsUp, MessageSquare, Video, Calendar, TrendingUp, Command, Bell, User, BookOpen, Zap, Activity, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import api from '@/lib/api';
+import { firestoreService } from '@/lib/firestoreService';
+import { peersService } from '@/lib/peersService';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
@@ -30,23 +31,29 @@ export default function Dashboard() {
     });
 
     useEffect(() => {
-        if (!token) return;
+        if (!user) return;
 
         const fetchData = async () => {
             try {
-                const [sessionsRes, doubtsRes] = await Promise.all([
-                    api.get('/sessions'),
-                    api.get('/doubts')
+                // Fetch real data from Firestore
+                const [sessions, doubts, peers] = await Promise.all([
+                    firestoreService.getSessions(),
+                    firestoreService.getDoubts(),
+                    peersService.getAllUsers()
                 ]);
-                setRecentSessions(sessionsRes.data.slice(0, 3));
-                setRecentDoubts(doubtsRes.data.slice(0, 4));
+
+                // Filter docs uploaded by user
+                const userDocs = await firestoreService.getUserDocuments(user.uid);
+
+                setRecentSessions(sessions.slice(0, 3));
+                setRecentDoubts(doubts.slice(0, 4));
 
                 // Calculate real stats
                 setStats({
-                    documentsProcessed: doubtsRes.data.filter((d: any) => d.aiAnswer).length,
-                    doubtsAnswered: doubtsRes.data.filter((d: any) => d.resolved).length,
-                    studyHours: Math.floor(doubtsRes.data.length * 0.5),
-                    activePeers: Math.min(sessionsRes.data.length * 2 + 5, 24)
+                    documentsProcessed: userDocs.length,
+                    doubtsAnswered: doubts.filter((d: any) => d.status === 'RESOLVED').length,
+                    studyHours: Math.floor(doubts.length * 0.5) + (sessions.length * 1), // Estimate
+                    activePeers: peers.length
                 });
             } catch (e) {
                 console.error("Dashboard fetch error:", e);
@@ -59,7 +66,7 @@ export default function Dashboard() {
         // Refresh every 30 seconds
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [user]);
 
     const formatTime = (isoString: string) => {
         return new Date(isoString).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -294,7 +301,7 @@ export default function Dashboard() {
                                             <p className="text-sm text-slate-500">{session.tutorName} • {formatTime(session.scheduledAt)}</p>
                                         </div>
                                     </div>
-                                    <Button size="sm" onClick={() => window.open(session.meetLink, '_blank')}>Join</Button>
+                                    <Button className="text-xs px-3 py-1" onClick={() => window.open(session.meetLink, '_blank')}>Join</Button>
                                 </GlassCard>
                             ))}
                         </div>
@@ -319,8 +326,10 @@ export default function Dashboard() {
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: 0.1 * i }}
+                                    className="cursor-pointer"
+                                    onClick={() => router.push('/dashboard/forum')}
                                 >
-                                    <GlassCard className="p-5 flex flex-col gap-4 cursor-pointer group hover:bg-white/80" onClick={() => router.push('/dashboard/forum')}>
+                                    <GlassCard className="p-5 flex flex-col gap-4 group hover:bg-white/80">
                                         <div className="flex justify-between items-start">
                                             <span className="text-[10px] font-bold px-2 py-1 rounded border bg-blue-50 border-blue-100 text-blue-600">
                                                 {doubt.courseId || 'General'}

@@ -99,7 +99,7 @@ export default function NotebookPage() {
         if (messages.length === 0) {
             setMessages([{
                 role: 'model',
-                content: '👋 Hi! I\'m Echo, your AI companion \n\n📚 Upload a PDF, PPT, or DOCX to get started, or ask me anything about your studies! 💡',
+                content: 'Hi 👋 I\'m Echo, your AI companion \n\n📚 Upload a PDF, PPT or DOCX to get started or ask me anything about your studies! 💡',
                 timestamp: new Date().toISOString()
             }]);
         }
