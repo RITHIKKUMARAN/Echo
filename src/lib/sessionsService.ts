@@ -25,6 +25,7 @@ export interface TeachingSession {
     createdBy: string; // uid of creator
     creatorName: string; // cached name
     status: 'UPCOMING' | 'ONGOING' | 'COMPLETED';
+    sheetId?: string; // Google Sheets ID (created on first registration)
     createdAt: Timestamp | Date;
     updatedAt?: Timestamp | Date;
 }
@@ -145,16 +146,17 @@ export async function endTeachingSession(sessionId: string, currentUserId: strin
 /**
  * Subscribe to real-time session updates
  * Returns an unsubscribe function
+ * Uses client-side sorting to avoid Firestore index requirement
  */
 export function subscribeToSessions(
     courseId: string,
     callback: (sessions: TeachingSession[]) => void
 ): () => void {
     try {
+        // Simple query without orderBy (no index needed!)
         const q = query(
             collection(db, 'teachingSessions'),
-            where('courseId', '==', courseId),
-            orderBy('scheduledStartTime', 'asc')
+            where('courseId', '==', courseId)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -178,10 +180,19 @@ export function subscribeToSessions(
                 });
             });
 
+            // Client-side sorting (no Firestore index needed)
+            sessions.sort((a, b) => {
+                const timeA = new Date(a.scheduledStartTime).getTime();
+                const timeB = new Date(b.scheduledStartTime).getTime();
+                return timeA - timeB;
+            });
+
             callback(sessions);
-            console.log('✅ Real-time update:', sessions.length, 'sessions');
+            console.log('✅ Real-time update:', sessions.length, 'sessions for course', courseId);
         }, (error) => {
             console.error('❌ Real-time listener error:', error);
+            console.error('Error details:', error.message);
+            // Return empty array on error
             callback([]);
         });
 

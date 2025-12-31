@@ -2,7 +2,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Book, MessageCircle, Video, Users } from 'lucide-react';
+import { LayoutDashboard, Book, MessageCircle, Video, Users, History } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const links = [
@@ -11,6 +11,7 @@ const links = [
     { name: 'Doubt Forum', href: '/dashboard/forum', icon: MessageCircle },
     { name: 'Sessions', href: '/dashboard/sessions', icon: Video },
     { name: 'Peer Connect', href: '/dashboard/connect', icon: Users },
+    { name: 'Study History', href: '/dashboard/history', icon: History },
 ];
 
 export default function Navigation() {

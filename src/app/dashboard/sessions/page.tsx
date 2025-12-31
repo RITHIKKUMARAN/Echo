@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Calendar, Clock, Users, Video, ArrowRight, X, Plus, Edit, StopCircle, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, Users, Video, ArrowRight, X, Plus, Edit, StopCircle, AlertCircle, UserPlus, CheckCircle, List } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import sessionsService, { TeachingSession, CreateSessionData } from '@/lib/sessionsService';
+import registrationService from '@/lib/registrationService';
+import studyHistoryService from '@/lib/studyHistoryService';
 import { useAuth } from '@/context/AuthContext';
 
 export default function SessionsPage() {
@@ -16,6 +18,17 @@ export default function SessionsPage() {
     const [showEdit, setShowEdit] = useState(false);
     const [editingSession, setEditingSession] = useState<TeachingSession | null>(null);
     const [creating, setCreating] = useState(false);
+
+    // Registration state tracking
+    const [registrations, setRegistrations] = useState<{ [sessionId: string]: boolean }>({});
+    const [registrationCounts, setRegistrationCounts] = useState<{ [sessionId: string]: number }>({});
+    const [registering, setRegistering] = useState<{ [sessionId: string]: boolean }>({});
+
+    // View registrations modal
+    const [showRegistrations, setShowRegistrations] = useState(false);
+    const [viewingSession, setViewingSession] = useState<TeachingSession | null>(null);
+    const [registrationsList, setRegistrationsList] = useState<any[]>([]);
+    const [loadingRegistrations, setLoadingRegistrations] = useState(false);
 
     // Form state
     const [title, setTitle] = useState('');
@@ -38,6 +51,95 @@ export default function SessionsPage() {
 
         return () => unsubscribe();
     }, [user]);
+
+    // Real-time registration status for all sessions
+    useEffect(() => {
+        if (!user?.uid || sessions.length === 0) return;
+
+        const unsubscribers: (() => void)[] = [];
+
+        sessions.forEach((session) => {
+            // Subscribe to registration status
+            const regUnsub = registrationService.subscribeToRegistrationStatus(
+                session.sessionId,
+                user.uid,
+                (isRegistered) => {
+                    setRegistrations(prev => ({
+                        ...prev,
+                        [session.sessionId]: isRegistered
+                    }));
+                }
+            );
+
+            // Subscribe to registration count
+            const countUnsub = registrationService.subscribeToRegistrationCount(
+                session.sessionId,
+                (count) => {
+                    setRegistrationCounts(prev => ({
+                        ...prev,
+                        [session.sessionId]: count
+                    }));
+                }
+            );
+
+            unsubscribers.push(regUnsub, countUnsub);
+        });
+
+        return () => {
+            unsubscribers.forEach(unsub => unsub());
+        };
+    }, [user, sessions]);
+
+    const handleRegister = async (sessionId: string) => {
+        if (!user?.uid || !user?.email) {
+            alert('Please log in to register');
+            return;
+        }
+
+        setRegistering(prev => ({ ...prev, [sessionId]: true }));
+
+        try {
+            const userName = user.displayName || user.email.split('@')[0];
+            const academicYear = 'Not specified'; // TODO: Get from user profile
+
+            const result = await registrationService.registerForSession(
+                sessionId,
+                user.uid,
+                user.email,
+                userName,
+                academicYear
+            );
+
+            if (result.success) {
+                console.log('✅ Registered successfully');
+                // State will update automatically via real-time listener
+            } else {
+                if (result.error !== 'Already registered') {
+                    alert(result.error || 'Registration failed');
+                }
+            }
+        } catch (error) {
+            console.error('Registration error:', error);
+            alert('Failed to register. Please try again.');
+        } finally {
+            setRegistering(prev => ({ ...prev, [sessionId]: false }));
+        }
+    };
+
+    const handleViewRegistrations = async (session: TeachingSession) => {
+        setViewingSession(session);
+        setShowRegistrations(true);
+        setLoadingRegistrations(true);
+
+        try {
+            const regs = await registrationService.getAllRegistrations(session.sessionId);
+            setRegistrationsList(regs);
+        } catch (error) {
+            console.error('Error loading registrations:', error);
+        } finally {
+            setLoadingRegistrations(false);
+        }
+    };
 
     const handleCreateSession = async () => {
         if (!title.trim() || !scheduledDate || !scheduledTime || !meetLink.trim()) {
@@ -470,6 +572,16 @@ export default function SessionsPage() {
                                             )}
                                             <div className="flex gap-2">
                                                 <Button
+                                                    onClick={() => handleViewRegistrations(session)}
+                                                    variant="outline"
+                                                    className="flex-1 gap-2 border-blue-200 text-blue-600 hover:bg-blue-50"
+                                                >
+                                                    <List className="w-4 h-4" />
+                                                    View ({registrationCounts[session.sessionId] || 0})
+                                                </Button>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button
                                                     onClick={() => openEditModal(session)}
                                                     variant="outline"
                                                     className="flex-1 gap-2 border-slate-200"
@@ -491,17 +603,46 @@ export default function SessionsPage() {
                                         </>
                                     ) : (
                                         <>
-                                            {canJoin ? (
-                                                <a
-                                                    href={session.meetLink}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="block w-full text-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors"
-                                                >
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        Join Now <ArrowRight className="w-4 h-4" />
-                                                    </div>
-                                                </a>
+                                            {/* Student View - Register then Join */}
+                                            {session.status !== 'COMPLETED' ? (
+                                                <>
+                                                    {registrations[session.sessionId] ? (
+                                                        // User is registered - show Join button
+                                                        <a
+                                                            href={session.meetLink}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={() => {
+                                                                // Track session attendance in study history
+                                                                if (user?.uid) {
+                                                                    studyHistoryService.recordSessionAttended(
+                                                                        user.uid,
+                                                                        'CS101',
+                                                                        session.sessionId || '',
+                                                                        session.title,
+                                                                        session.createdBy
+                                                                    );
+                                                                }
+                                                            }}
+                                                            className="block w-full text-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors"
+                                                        >
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <CheckCircle className="w-4 h-4" />
+                                                                Join Now <ArrowRight className="w-4 h-4" />
+                                                            </div>
+                                                        </a>
+                                                    ) : (
+                                                        // User not registered - show Register button
+                                                        <Button
+                                                            onClick={() => handleRegister(session.sessionId)}
+                                                            disabled={registering[session.sessionId]}
+                                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                                                        >
+                                                            <UserPlus className="w-4 h-4" />
+                                                            {registering[session.sessionId] ? 'Registering...' : 'Register to Join'}
+                                                        </Button>
+                                                    )}
+                                                </>
                                             ) : (
                                                 <div className="w-full text-center px-4 py-3 bg-slate-100 text-slate-500 rounded-xl font-medium">
                                                     Session Ended
@@ -511,15 +652,121 @@ export default function SessionsPage() {
                                     )}
                                 </div>
 
-                                {/* Registration removed - always show 0 */}
+                                {/* Registration Count */}
                                 <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                                    <span>Registered: 0</span>
+                                    <span className="flex items-center gap-1">
+                                        <Users className="w-3 h-3" />
+                                        Registered: {registrationCounts[session.sessionId] || 0}
+                                    </span>
                                 </div>
                             </motion.div>
                         );
                     })}
                 </div>
             )}
+
+            {/* Registrations Modal */}
+            <AnimatePresence>
+                {showRegistrations && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                            onClick={() => setShowRegistrations(false)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden"
+                        >
+                            {/* Header */}
+                            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-900">Registrations</h2>
+                                    <p className="text-sm text-slate-500 mt-1">{viewingSession?.title}</p>
+                                </div>
+                                <button
+                                    onClick={() => setShowRegistrations(false)}
+                                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-6 overflow-y-auto max-h-[60vh]">
+                                {loadingRegistrations ? (
+                                    <div className="text-center py-8 text-slate-500">
+                                        Loading registrations...
+                                    </div>
+                                ) : registrationsList.length === 0 ? (
+                                    <div className="text-center py-8">
+                                        <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                        <p className="text-slate-500">No registrations yet</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {registrationsList.map((reg, index) => (
+                                            <div
+                                                key={reg.registrationId}
+                                                className="p-4 bg-slate-50 rounded-xl border border-slate-200"
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                                                                {reg.userName?.charAt(0) || 'U'}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-slate-900">{reg.userName}</p>
+                                                                <p className="text-xs text-slate-500">{reg.userEmail}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-2 flex items-center gap-4 text-xs text-slate-600">
+                                                            <span className="flex items-center gap-1">
+                                                                <Calendar className="w-3 h-3" />
+                                                                {reg.academicYear}
+                                                            </span>
+                                                            <span className="flex items-center gap-1">
+                                                                <Clock className="w-3 h-3" />
+                                                                {reg.registeredAt?.toDate ?
+                                                                    new Date(reg.registeredAt.toDate()).toLocaleString() :
+                                                                    'Just now'
+                                                                }
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-xs font-mono text-slate-400">
+                                                        #{index + 1}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-6 border-t border-slate-200 bg-slate-50">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-slate-600">
+                                        Total Registrations: <span className="font-bold">{registrationsList.length}</span>
+                                    </p>
+                                    <Button
+                                        onClick={() => setShowRegistrations(false)}
+                                        variant="outline"
+                                    >
+                                        Close
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

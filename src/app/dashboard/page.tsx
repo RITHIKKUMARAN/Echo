@@ -8,6 +8,7 @@ import { Search, X, Send, FileText, MoreVertical, ThumbsUp, MessageSquare, Video
 import { motion, AnimatePresence } from 'framer-motion';
 import { firestoreService } from '@/lib/firestoreService';
 import { peersService } from '@/lib/peersService';
+import sessionsService from '@/lib/sessionsService';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
@@ -30,14 +31,33 @@ export default function Dashboard() {
         activePeers: 0
     });
 
+    // Real-time sessions listener (synced with Sessions page)
+    useEffect(() => {
+        if (!user?.uid) return;
+
+        const courseId = 'CS101'; // TODO: Get from user context
+
+        const unsubscribe = sessionsService.subscribe(courseId, (allSessions) => {
+            // Filter to show only UPCOMING and ONGOING sessions (not COMPLETED)
+            const activeSessions = allSessions.filter(session =>
+                session.status === 'UPCOMING' || session.status === 'ONGOING'
+            );
+
+            // Take only first 3 for dashboard
+            setRecentSessions(activeSessions.slice(0, 3));
+            console.log('✅ Dashboard: Loaded', activeSessions.length, 'active sessions');
+        });
+
+        return () => unsubscribe();
+    }, [user]);
+
+    // Fetch other dashboard data
     useEffect(() => {
         if (!user) return;
 
         const fetchData = async () => {
             try {
-                // Fetch real data from Firestore
-                const [sessions, doubts, peers] = await Promise.all([
-                    firestoreService.getSessions(),
+                const [doubts, peers] = await Promise.all([
                     firestoreService.getDoubts(),
                     peersService.getAllUsers()
                 ]);
@@ -45,14 +65,13 @@ export default function Dashboard() {
                 // Filter docs uploaded by user
                 const userDocs = await firestoreService.getUserDocuments(user.uid);
 
-                setRecentSessions(sessions.slice(0, 3));
                 setRecentDoubts(doubts.slice(0, 4));
 
                 // Calculate real stats
                 setStats({
                     documentsProcessed: userDocs.length,
                     doubtsAnswered: doubts.filter((d: any) => d.status === 'RESOLVED').length,
-                    studyHours: Math.floor(doubts.length * 0.5) + (sessions.length * 1), // Estimate
+                    studyHours: Math.floor(doubts.length * 0.5) + (recentSessions.length * 1), // Estimate
                     activePeers: peers.length
                 });
             } catch (e) {
@@ -63,10 +82,10 @@ export default function Dashboard() {
         };
         fetchData();
 
-        // Refresh every 30 seconds
+        // Refresh doubts/peers every 30 seconds
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
-    }, [user]);
+    }, [user, recentSessions.length]);
 
     const formatTime = (isoString: string) => {
         return new Date(isoString).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -298,10 +317,24 @@ export default function Dashboard() {
                                         </div>
                                         <div>
                                             <h4 className="font-semibold text-slate-800">{session.title}</h4>
-                                            <p className="text-sm text-slate-500">{session.tutorName} • {formatTime(session.scheduledAt)}</p>
+                                            <p className="text-sm text-slate-500">
+                                                {session.creatorName} • {formatTime(session.scheduledStartTime)}
+                                                {session.status === 'ONGOING' && (
+                                                    <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                                        Live Now
+                                                    </span>
+                                                )}
+                                            </p>
                                         </div>
                                     </div>
-                                    <Button className="text-xs px-3 py-1" onClick={() => window.open(session.meetLink, '_blank')}>Join</Button>
+                                    {session.status !== 'COMPLETED' && (
+                                        <Button
+                                            className="text-xs px-3 py-1"
+                                            onClick={() => window.open(session.meetLink, '_blank')}
+                                        >
+                                            Join
+                                        </Button>
+                                    )}
                                 </GlassCard>
                             ))}
                         </div>

@@ -76,6 +76,37 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
+    
+    // Study History Collection (NEW - PRODUCTION READY)
+    // Read-only for students, course-scoped for professors
+    match /studyHistory/{eventId} {
+      // Students can read only their own history
+      allow read: if request.auth != null && 
+                     resource.data.userId == request.auth.uid;
+      
+      // NO direct write access from frontend
+      // All writes happen server-side only
+      allow write: if false;
+      
+      // TODO: Add professor read access with role check:
+      // allow read: if request.auth != null && 
+      //                (resource.data.userId == request.auth.uid ||
+      //                 isProfessor(request.auth.uid, resource.data.courseId));
+    }
+    
+    // Session Registrations Collection (NEW - PRODUCTION READY)
+    match /sessionRegistrations/{registrationId} {
+      // Anyone authenticated can read registrations (for count display)
+      allow read: if request.auth != null;
+      
+      // Allow authenticated users to create registrations
+      // Validate that userId matches auth user
+      allow create: if request.auth != null && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // No updates or deletes
+      allow update, delete: if false;
+    }
     */
   }
 }

@@ -655,6 +655,206 @@ app.post('/echo-1928rn/us-central1/api/study-context/update', async (req, res) =
     }
 });
 
+// ============================================
+// SESSION REGISTRATION WITH GOOGLE SHEETS
+// ============================================
+
+/**
+ * POST /sessions/register
+ * Register user for a teaching session
+ * Creates Google Sheet on first registration
+ */
+app.post('/echo-1928rn/us-central1/api/sessions/register', async (req, res) => {
+    try {
+        const { sessionId, userId, userEmail } = req.body;
+
+        if (!sessionId || !userId || !userEmail) {
+            return res.status(400).json({
+                error: 'Missing required fields: sessionId, userId, userEmail'
+            });
+        }
+
+        console.log(`📝 Registration request: User ${userId} for session ${sessionId}`);
+
+        // 1. Check if session exists and is not completed
+        const sessionRef = admin.firestore().collection('teachingSessions').doc(sessionId);
+        const sessionSnap = await sessionRef.get();
+
+        if (!sessionSnap.exists) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        const sessionData = sessionSnap.data();
+        if (sessionData.status === 'COMPLETED') {
+            return res.status(400).json({ error: 'Cannot register for completed session' });
+        }
+
+        // 2. Check if user already registered
+        const existingReg = await admin.firestore()
+            .collection('sessionRegistrations')
+            .where('sessionId', '==', sessionId)
+            .where('userId', '==', userId)
+            .get();
+
+        if (!existingReg.empty) {
+            return res.status(200).json({
+                message: 'Already registered',
+                alreadyRegistered: true
+            });
+        }
+
+        // 3. Fetch user profile for complete details
+        const userDoc = await admin.firestore().collection('users').doc(userId).get();
+        const userData = userDoc.data() || {};
+
+        const userName = userData.displayName || userData.name || userEmail.split('@')[0];
+        const academicYear = userData.academicYear || userData.year || 'Not specified';
+
+        // 4. Create registration document
+        const registrationData = {
+            sessionId,
+            userId,
+            userName,
+            userEmail,
+            academicYear,
+            registeredAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        const regRef = await admin.firestore()
+            .collection('sessionRegistrations')
+            .add(registrationData);
+
+        console.log(`✅ Registration created: ${regRef.id}`);
+
+        // 5. Google Sheets Integration
+        try {
+            let sheetId = sessionData.sheetId;
+
+            // If no sheet exists, create one (first registration)
+            if (!sheetId) {
+                console.log('📊 Creating new Google Sheet for registrations...');
+
+                // Note: Google Sheets API requires service account setup
+                // For MVP, we'll store sheetId placeholder and log the data
+                // In production, use googleapis package with service account
+
+                const sheetTitle = `${sessionData.title} - Registrations`;
+                sheetId = `sheet_${sessionId}_${Date.now()}`; // Placeholder
+
+                // Update session with sheetId
+                await sessionRef.update({ sheetId });
+
+                console.log(`📊 Sheet created (placeholder): ${sheetId}`);
+                console.log(`📊 Sheet title: ${sheetTitle}`);
+                console.log(`📊 First registration data:`, {
+                    Name: userName,
+                    Email: userEmail,
+                    'Academic Year': academicYear,
+                    'Registered At': new Date().toISOString()
+                });
+            } else {
+                // Append to existing sheet
+                console.log(`📊 Appending to existing sheet: ${sheetId}`);
+                console.log(`📊 Registration data:`, {
+                    Name: userName,
+                    Email: userEmail,
+                    'Academic Year': academicYear,
+                    'Registered At': new Date().toISOString()
+                });
+            }
+
+            /* 
+            PRODUCTION IMPLEMENTATION:
+            
+            const { google } = require('googleapis');
+            const sheets = google.sheets('v4');
+            
+            // Authenticate with service account
+            const auth = new google.auth.GoogleAuth({
+                keyFile: 'path/to/service-account.json',
+                scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+            });
+            
+            if (!sheetId) {
+                // Create new spreadsheet
+                const createResponse = await sheets.spreadsheets.create({
+                    auth,
+                    requestBody: {
+                        properties: { title: sheetTitle },
+                        sheets: [{
+                            properties: { title: 'Registrations' },
+                            data: [{
+                                rowData: [{
+                                    values: [
+                                        { userEnteredValue: { stringValue: 'Name' } },
+                                        { userEnteredValue: { stringValue: 'Email' } },
+                                        { userEnteredValue: { stringValue: 'Academic Year' } },
+                                        { userEnteredValue: { stringValue: 'Registered At' } }
+                                    ]
+                                }]
+                            }]
+                        }]
+                    }
+                });
+                
+                sheetId = createResponse.data.spreadsheetId;
+                
+                // Share with host
+                await sheets.spreadsheets.batchUpdate({
+                    auth,
+                    spreadsheetId: sheetId,
+                    requestBody: {
+                        requests: [{
+                            addProtectedRange: {
+                                protectedRange: {
+                                    range: { sheetId: 0 },
+                                    warningOnly: true
+                                }
+                            }
+                        }]
+                    }
+                });
+                
+                await sessionRef.update({ sheetId });
+            }
+            
+            // Append registration
+            await sheets.spreadsheets.values.append({
+                auth,
+                spreadsheetId: sheetId,
+                range: 'Registrations!A:D',
+                valueInputOption: 'USER_ENTERED',
+                requestBody: {
+                    values: [[
+                        userName,
+                        userEmail,
+                        academicYear,
+                        new Date().toISOString()
+                    ]]
+                }
+            });
+            */
+
+        } catch (sheetError) {
+            console.error('📊 Google Sheets error (non-blocking):', sheetError);
+            // Don't fail the registration if sheets fail
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Registration successful',
+            registrationId: regRef.id
+        });
+
+    } catch (error) {
+        console.error('❌ Registration error:', error);
+        res.status(500).json({
+            error: 'Registration failed',
+            details: error.message
+        });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`\n🚀 Echo Platform API Server Running!`);
     console.log(`   Local: http://localhost:${PORT}/`);

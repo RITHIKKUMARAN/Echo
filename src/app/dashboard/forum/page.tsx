@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { AnimatePresence, motion } from 'framer-motion';
 import firestoreService from '@/lib/firestoreService';
+import studyHistoryService from '@/lib/studyHistoryService';
 
 interface Reply {
     replyId: string;
@@ -139,6 +140,18 @@ export default function ForumPage() {
             if (action === 'SOLVED') {
                 await firestoreService.resolveDoubt(doubtId);
                 console.log('✅ Doubt marked as RESOLVED in Firestore');
+
+                // 📚 RECORD IN STUDY HISTORY
+                const doubt = doubts.find(d => d.doubtId === doubtId);
+                if (doubt && user?.uid) {
+                    await studyHistoryService.recordDoubtSolved(
+                        user.uid,
+                        doubt.courseId || 'CS101',
+                        doubtId,
+                        doubt.content,
+                        'AI' // Since this is student marking as solved after AI answer
+                    );
+                }
             } else if (action === 'CONFUSED') {
                 await firestoreService.updateDoubtStatus(doubtId, 'OPEN', 'Student escalated to forum');
                 setExpandedDoubtId(doubtId);

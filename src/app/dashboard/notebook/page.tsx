@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { firestoreService } from '@/lib/firestoreService';
 import { peersService } from '@/lib/peersService';
 import studyContextService from '@/lib/studyContextService';
+import studyHistoryService from '@/lib/studyHistoryService';
 
 interface Message {
     role: 'user' | 'model';
@@ -258,6 +259,14 @@ export default function NotebookPage() {
                             userMessage
                         );
                         console.log('✅ Updated study context with topics:', topicResponse.data.topics);
+
+                        // 📚 RECORD IN STUDY HISTORY
+                        await studyHistoryService.recordTopicStudied(
+                            user.uid,
+                            'CS101', // TODO: Get from user context
+                            topicResponse.data.topics,
+                            'question'
+                        );
 
                         // 🔔 CHECK FOR STUDY PARTNERS AND NOTIFY
                         try {
