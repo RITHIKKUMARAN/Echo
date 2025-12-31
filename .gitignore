@@ -65,6 +65,8 @@ firestore-debug.log
 pubsub-debug.log
 .env.local
 .env
-*.md
-.md
 .env.local.template
+
+# Documentation files
+*.txt
+*.md

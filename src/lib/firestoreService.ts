@@ -385,9 +385,9 @@ export async function createSession(sessionData: Partial<Session>): Promise<stri
     try {
         const session: Session = {
             title: sessionData.title!,
-            description: sessionData.description,
-            tutorName: sessionData.tutorName!,
-            tutorUid: sessionData.tutorUid!,
+            description: sessionData.description || '',
+            tutorName: sessionData.tutorName || 'Instructor',
+            tutorUid: sessionData.tutorUid || 'anonymous',
             scheduledAt: sessionData.scheduledAt || serverTimestamp(),
             duration: sessionData.duration || 60,
             meetLink: sessionData.meetLink!,
@@ -428,9 +428,18 @@ export async function getSessions(filters?: {
             const data = doc.data();
             return {
                 sessionId: doc.id,
-                ...data,
+                title: data.title || 'Untitled Session',
+                tutor: {
+                    name: data.tutorName || 'Instructor',
+                    email: data.tutorUid || 'anonymous'
+                },
                 scheduledAt: data.scheduledAt?.toDate ? data.scheduledAt.toDate().toISOString() : new Date().toISOString(),
-                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
+                duration: data.duration || 60,
+                meetLink: data.meetLink || '',
+                courseId: data.courseId || 'general',
+                attendees: data.participants?.length || 0,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+                status: data.status || 'scheduled'
             };
         }) as Session[];
 

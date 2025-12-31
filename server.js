@@ -228,6 +228,27 @@ app.post('/echo-1928rn/us-central1/api/upload', upload.single('file'), async (re
 
         console.log('Document stored for chatId:', chatId);
 
+        // EXTRACTION: Study Topics
+        let topics = [];
+        try {
+            if (extractedText && extractedText.length > 50) {
+                const topicPrompt = `Analyze the following text and identify 3-5 distinct, high-level academic topics or subjects it covers (e.g., 'Quantum Mechanics', 'React Hooks', 'European History').
+                Return valid JSON array of strings ONLY. No markdown.
+                
+                Text: ${extractedText.substring(0, 2000)}`; // Limit context window
+
+                const topicResult = await model.generateContent(topicPrompt);
+                const topicResponse = topicResult.response.text();
+                // Clean markdown if present
+                const cleanJson = topicResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                topics = JSON.parse(cleanJson);
+                console.log('Extracted Topics:', topics);
+            }
+        } catch (topicError) {
+            console.error('Topic extraction failed:', topicError);
+            // Non-blocking error, continue with empty topics
+        }
+
         res.json({
             message: 'File processed successfully',
             materialId,
@@ -236,7 +257,8 @@ app.post('/echo-1928rn/us-central1/api/upload', upload.single('file'), async (re
             size: req.file.size,
             fileType,
             textLength: extractedText.length,
-            preview: extractedText.substring(0, 300) + '...'
+            preview: extractedText.substring(0, 300) + '...',
+            topics: Array.isArray(topics) ? topics : []
         });
     } catch (error) {
         console.error('Upload error:', error);
@@ -517,6 +539,119 @@ app.post('/echo-1928rn/us-central1/api/sessions', async (req, res) => {
     } catch (error) {
         console.error('Error creating session:', error);
         res.status(500).json({ error: 'Failed to create session', details: error.message });
+    }
+});
+
+// ============================================
+// STUDY PARTNERS RECOMMENDATION ENDPOINTS
+// ============================================
+
+/**
+ * Extract topics from a notebook question
+ * Called when student asks a question in AI Notebook
+ */
+app.post('/echo-1928rn/us-central1/api/notebook/extract-topics', async (req, res) => {
+    try {
+        const { question, uid, courseId } = req.body;
+
+        if (!question || !uid || !courseId) {
+            return res.status(400).json({ error: 'Missing required fields: question, uid, courseId' });
+        }
+
+        console.log('Extracting topics from question:', question.substring(0, 100));
+
+        // Use Gemini to extract topics
+        const topicPrompt = `Analyze the following student question and identify 2-4 specific academic topics or concepts it's about.
+        Return a valid JSON array of topic strings ONLY. Use concise, technical terms (e.g., "Dynamic Programming", "React Hooks", "Machine Learning").
+        
+        Question: "${question}"
+        
+        Return format: ["Topic 1", "Topic 2", ...]
+        No markdown, just the JSON array.`;
+
+        const topicResult = await model.generateContent(topicPrompt);
+        const topicResponse = topicResult.response.text();
+
+        // Clean markdown if present
+        const cleanJson = topicResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+        const topics = JSON.parse(cleanJson);
+
+        console.log('✅ Extracted topics:', topics);
+
+        res.json({
+            success: true,
+            topics: Array.isArray(topics) ? topics : [],
+            uid,
+            courseId,
+            activityType: 'question'
+        });
+    } catch (error) {
+        console.error('❌ Topic extraction error:', error);
+        res.status(500).json({
+            error: 'Failed to extract topics',
+            details: error.message,
+            topics: [] // Fallback to empty array
+        });
+    }
+});
+
+/**
+ * Get recommended study partners
+ * Returns students studying similar topics in the same course
+ */
+app.post('/echo-1928rn/us-central1/api/connections/recommendations', async (req, res) => {
+    try {
+        const { uid, courseId, timeWindowMinutes = 60 } = req.body;
+
+        if (!uid || !courseId) {
+            return res.status(400).json({ error: 'Missing required fields: uid, courseId' });
+        }
+
+        console.log(`Getting recommendations for user ${uid} in course ${courseId}`);
+
+        // Note: This endpoint is primarily for frontend to call
+        // The actual matching logic is in the frontend service (studyContextService.ts)
+        // This backend endpoint is a placeholder for future server-side matching if needed
+
+        res.json({
+            message: 'Use frontend studyContextService.getRecommendedStudyPartners() for real-time matching',
+            note: 'Backend matching can be implemented here for performance optimization'
+        });
+    } catch (error) {
+        console.error('❌ Recommendation error:', error);
+        res.status(500).json({ error: 'Failed to get recommendations', details: error.message });
+    }
+});
+
+/**
+ * Update active study context
+ * Stores what topics a student is currently studying
+ */
+app.post('/echo-1928rn/us-central1/api/study-context/update', async (req, res) => {
+    try {
+        const { uid, courseId, topics, activityType, questionSnippet } = req.body;
+
+        if (!uid || !courseId || !topics || !Array.isArray(topics)) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        console.log(`📚 Updating study context for user ${uid}:`, topics);
+
+        // Note: The actual Firestore update happens in the frontend
+        // This is just an acknowledgment endpoint
+        // Could be enhanced to do server-side Firestore updates for better security
+
+        res.json({
+            success: true,
+            message: 'Study context update acknowledged',
+            uid,
+            courseId,
+            topics,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Study context update error:', error);
+        res.status(500).json({ error: 'Failed to update study context', details: error.message });
     }
 });
 

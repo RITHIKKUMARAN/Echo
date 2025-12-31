@@ -4,11 +4,13 @@ import { useState, useRef, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Search, Send, Library, X, Mic, MicOff, Sparkles, Bot, User, Paperclip, FileText, Trash2, Database } from 'lucide-react';
+import { Search, Send, Library, X, Mic, MicOff, Sparkles, Bot, User, Paperclip, FileText, Trash2, Database, Users, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import firestoreService from '@/lib/firestoreService';
+import { firestoreService } from '@/lib/firestoreService';
+import { peersService } from '@/lib/peersService';
+import studyContextService from '@/lib/studyContextService';
 
 interface Message {
     role: 'user' | 'model';
@@ -33,6 +35,7 @@ export default function NotebookPage() {
     const [uploadedDocs, setUploadedDocs] = useState<UploadedDocument[]>([]);
     const [showLibrary, setShowLibrary] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const [partnerNotification, setPartnerNotification] = useState<{ show: boolean, count: number, partners: any[] } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const recognitionRef = useRef<any>(null);
@@ -177,6 +180,23 @@ export default function NotebookPage() {
                 });
 
                 console.log('✅ Document saved to Firestore:', file.name);
+
+                // STUDY MATCH: Sync extracted topics to user profile and active study context
+                if (response.data.topics && response.data.topics.length > 0 && user?.uid) {
+                    // Update user's persistent topics (merged with existing)
+                    await peersService.updateUserTopics(user.uid, response.data.topics);
+
+                    // Update active study context (live, real-time)
+                    await studyContextService.updateStudyContext(
+                        user.uid,
+                        'CS101', // TODO: Get from user context
+                        response.data.topics,
+                        'file_upload',
+                        file.name
+                    );
+
+                    console.log('🧠 Synced study topics and active context:', response.data.topics);
+                }
             }
 
             setMessages(prev => [...prev, {
@@ -218,6 +238,79 @@ export default function NotebookPage() {
                 role: 'model',
                 content: response.data.response
             }]);
+
+            // 🧠 STUDY PARTNER MATCHING: Extract topics and update active study context
+            if (user?.uid && userMessage.length > 10) {
+                try {
+                    const topicResponse = await api.post('/notebook/extract-topics', {
+                        question: userMessage,
+                        uid: user.uid,
+                        courseId: 'CS101' // TODO: Get from user context
+                    });
+
+                    if (topicResponse.data.topics && topicResponse.data.topics.length > 0) {
+                        // Update active study context in Firestore
+                        await studyContextService.updateStudyContext(
+                            user.uid,
+                            'CS101', // TODO: Get from user context
+                            topicResponse.data.topics,
+                            'question',
+                            userMessage
+                        );
+                        console.log('✅ Updated study context with topics:', topicResponse.data.topics);
+
+                        // 🔔 CHECK FOR STUDY PARTNERS AND NOTIFY
+                        try {
+                            const matches = await studyContextService.getRecommendedStudyPartners(
+                                user.uid,
+                                'CS101',
+                                60 // 60-minute window
+                            );
+
+                            if (matches.length > 0) {
+                                console.log('🎉 Found', matches.length, 'study partner(s) for your topics!');
+
+                                // Show in-app notification
+                                setPartnerNotification({
+                                    show: true,
+                                    count: matches.length,
+                                    partners: matches
+                                });
+
+                                // Auto-hide after 10 seconds
+                                setTimeout(() => {
+                                    setPartnerNotification(null);
+                                }, 10000);
+
+                                // Also show desktop notification
+                                const { default: notificationService } = await import('@/lib/notificationService');
+
+                                if (notificationService.isSupported() &&
+                                    notificationService.getPermission().granted) {
+
+                                    console.log('🔔 Showing study partner notification...');
+
+                                    if (matches.length === 1) {
+                                        notificationService.showPartnerNotification(matches[0]);
+                                    } else {
+                                        notificationService.showMultipleNotification(matches.length, matches);
+                                    }
+                                } else {
+                                    console.log('ℹ️ Notifications not enabled. Found partners:',
+                                        matches.map(m => m.displayName).join(', '));
+                                }
+                            } else {
+                                console.log('ℹ️ No study partners found studying these topics right now');
+                            }
+                        } catch (matchError) {
+                            console.warn('⚠️ Partner matching failed (non-blocking):', matchError);
+                        }
+                    }
+                } catch (topicError) {
+                    // Non-blocking error - don't interrupt chat flow
+                    console.warn('⚠️ Topic extraction failed (non-blocking):', topicError);
+                }
+            }
         } catch (error: any) {
             setMessages(prev => [...prev, {
                 role: 'model',
@@ -264,6 +357,49 @@ export default function NotebookPage() {
                     </Button>
                 </div>
             </header>
+
+            {/* In-App Study Partner Notification */}
+            <AnimatePresence>
+                {partnerNotification?.show && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="fixed top-20 right-8 z-50 max-w-md"
+                    >
+                        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl shadow-2xl p-6 border border-green-400">
+                            <div className="flex items-start gap-4">
+                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <Users className="w-6 h-6" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-lg font-bold mb-1">
+                                        🎉 {partnerNotification.count === 1 ? 'Study Partner Found!' : `${partnerNotification.count} Study Partners Found!`}
+                                    </h3>
+                                    <p className="text-sm text-white/90 mb-3">
+                                        {partnerNotification.count === 1
+                                            ? `${partnerNotification.partners[0].displayName} is studying similar topics`
+                                            : `${partnerNotification.count} students studying similar topics`
+                                        }
+                                    </p>
+                                    <a
+                                        href="/dashboard/connect"
+                                        className="inline-flex items-center gap-2 bg-white text-green-600 px-4 py-2 rounded-lg font-semibold text-sm hover:bg-green-50 transition-colors"
+                                    >
+                                        Connect Now <ArrowRight className="w-4 h-4" />
+                                    </a>
+                                </div>
+                                <button
+                                    onClick={() => setPartnerNotification(null)}
+                                    className="text-white/80 hover:text-white transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Library Sidebar Modal */}
             <AnimatePresence>

@@ -9,7 +9,7 @@ import { User, Mail, GraduationCap, Building2, ArrowRight, Loader2 } from 'lucid
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { apiRequest } from '@/lib/api';
+
 
 const departments = ['Computer Science', 'Data Science', 'AI & ML', 'Robotics', 'Cyber Security'];
 const years = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
@@ -46,18 +46,22 @@ export default function AuthForm() {
                 });
 
                 // Sync with Backend
-                const token = await userCredential.user.getIdToken();
-                await apiRequest('/users/sync', 'POST', {
-                    department,
-                    academicYear: year,
-                    role: 'student'
-                }, token);
+                // Profile sync handled automatically by AuthContext
+
 
                 router.push('/dashboard');
             }
         } catch (err: any) {
             console.error(err);
-            setError(err.message || 'Authentication failed');
+            if (err.code === 'auth/email-already-in-use') {
+                setError('This email is already registered. Please login instead.');
+            } else if (err.code === 'auth/invalid-email') {
+                setError('Invalid email address.');
+            } else if (err.code === 'auth/weak-password') {
+                setError('Password should be at least 6 characters.');
+            } else {
+                setError(err.message || 'Authentication failed');
+            }
         } finally {
             setLoading(false);
         }

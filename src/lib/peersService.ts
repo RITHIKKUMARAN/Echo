@@ -8,7 +8,8 @@ import {
     updateDoc,
     query,
     where,
-    serverTimestamp
+    serverTimestamp,
+    getDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -18,9 +19,10 @@ export interface UserProfile {
     email: string;
     department: string;
     year: number;
-    bio?: string;
+    bio?: string | null;
     interests: string[];
-    photoURL?: string;
+    studyTopics?: string[];
+    photoURL?: string | null;
     isOnline: boolean;
     lastSeen: any;
     createdAt: any;
@@ -46,7 +48,7 @@ export async function createUserProfile(profileData: Partial<UserProfile>): Prom
             year: profileData.year || 1,
             bio: profileData.bio || '',
             interests: profileData.interests || [],
-            photoURL: profileData.photoURL,
+            photoURL: profileData.photoURL || null,
             isOnline: true,
             lastSeen: serverTimestamp(),
             createdAt: serverTimestamp()
@@ -156,12 +158,39 @@ export async function updateConnectionStatus(
     }
 }
 
+// Update user study topics from AI analysis
+export async function updateUserTopics(userId: string, newTopics: string[]): Promise<void> {
+    try {
+        if (!newTopics || newTopics.length === 0) return;
+
+        const docRef = doc(db, 'users', userId);
+        const docSnap = await getDoc(docRef);
+
+        let currentTopics: string[] = [];
+        if (docSnap.exists()) {
+            currentTopics = docSnap.data().studyTopics || [];
+        }
+
+        // Merge unique topics, keep top 10 (newest first logic can be adjusted, here we prepend new)
+        const merged = Array.from(new Set([...newTopics, ...currentTopics])).slice(0, 10);
+
+        await updateDoc(docRef, {
+            studyTopics: merged,
+            lastSeen: serverTimestamp()
+        });
+        console.log('✅ Updated user study topics:', merged);
+    } catch (error) {
+        console.error('❌ Error updating topics:', error);
+    }
+}
+
 export const peersService = {
     createUserProfile,
     getAllUsers,
     sendConnectionRequest,
     getUserConnections,
-    updateConnectionStatus
+    updateConnectionStatus,
+    updateUserTopics
 };
 
 export default peersService;

@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                         userId: currentUser.uid,
                         displayName: currentUser.displayName || 'Student',
                         email: currentUser.email || '',
-                        photoURL: currentUser.photoURL || undefined
+                        photoURL: currentUser.photoURL || null
                     });
                 } catch (e) {
                     console.error("Error syncing user profile:", e);

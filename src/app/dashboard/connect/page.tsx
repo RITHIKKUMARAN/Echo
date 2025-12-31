@@ -4,19 +4,29 @@ import { useState, useEffect } from 'react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Users, Search, Filter, UserPlus, Video, MessageCircle, CheckCircle, XCircle, Clock, Award, BookOpen } from 'lucide-react';
+import { Users, Search, Filter, UserPlus, Video, MessageCircle, CheckCircle, XCircle, Clock, Award, BookOpen, Bell, BellOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
+import { useNotifications } from '@/context/NotificationContext';
 import peersService, { UserProfile, Connection } from '@/lib/peersService';
+import notificationService from '@/lib/notificationService';
+import ChatModal from '@/components/ChatModal';
+import { Sparkles as SparklesIcon } from 'lucide-react';
 
 export default function ConnectPage() {
     const { user } = useAuth();
+    const { notificationsEnabled, setNotificationsEnabled, recommendedPartners } = useNotifications();
     const [peers, setPeers] = useState<UserProfile[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
+    const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [loadingRecommendations, setLoadingRecommendations] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterDepartment, setFilterDepartment] = useState('all');
     const [filterYear, setFilterYear] = useState('all');
+    const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
+    const [chatOpen, setChatOpen] = useState(false);
+    const [activeChatPeer, setActiveChatPeer] = useState<{ id: string; name: string; connectionId: string } | null>(null);
 
     // Load peers and connections
     useEffect(() => {
@@ -45,6 +55,10 @@ export default function ConnectPage() {
                 const userConnections = await peersService.getUserConnections(user.uid);
                 setConnections(userConnections);
 
+                // Get my profile for matching
+                const myProfile = allUsers.find(u => u.userId === user.uid);
+                if (myProfile) setCurrentUserProfile(myProfile);
+
                 console.log('✅ Loaded', otherUsers.length, 'peers and', userConnections.length, 'connections');
             } catch (error) {
                 console.error('❌ Error loading peers:', error);
@@ -58,6 +72,55 @@ export default function ConnectPage() {
         const interval = setInterval(loadData, 30000);
         return () => clearInterval(interval);
     }, [user]);
+
+
+    // Note: Recommendations are now loaded globally by NotificationProvider
+    // This runs in the background on all pages, not just Peer Connect
+
+
+    // Check notification permission on mount
+    useEffect(() => {
+        if (!notificationService.isSupported()) {
+            console.warn('Browser notifications not supported');
+            return;
+        }
+
+        const permission = notificationService.getPermission();
+        setNotificationsEnabled(permission.granted);
+
+        // Show prompt if permission is pending and user hasn't dismissed it
+        if (permission.pending && !sessionStorage.getItem('notification-prompt-dismissed')) {
+            setShowNotificationPrompt(true);
+        }
+    }, []);
+
+    // Handle notification permission request
+    const handleEnableNotifications = async () => {
+        const granted = await notificationService.requestPermission();
+        setNotificationsEnabled(granted);
+        setShowNotificationPrompt(false);
+
+        if (granted) {
+            console.log('✅ Notifications enabled');
+            // Show a test notification
+            notificationService.showPartnerNotification({
+                uid: 'demo',
+                displayName: 'Demo Student',
+                academicYear: 3,
+                department: 'Computer Science',
+                matchedTopics: ['Notifications Enabled!'],
+                lastActiveAt: new Date(),
+                courseId: 'CS101'
+            });
+        } else {
+            console.warn('⚠️ Notifications permission denied');
+        }
+    };
+
+    const handleDismissNotificationPrompt = () => {
+        setShowNotificationPrompt(false);
+        sessionStorage.setItem('notification-prompt-dismissed', 'true');
+    };
 
     // Send connection request
     const handleConnect = async (peerId: string) => {
@@ -139,6 +202,39 @@ export default function ConnectPage() {
         return status.status === 'connected';
     });
 
+    // Study Matches (Intersection of topics)
+    const studyMatches = peers.filter(peer => {
+        if (!currentUserProfile?.studyTopics || !peer.studyTopics) return false;
+        const intersection = peer.studyTopics.filter(topic =>
+            currentUserProfile.studyTopics?.some(myTopic =>
+                myTopic.toLowerCase().includes(topic.toLowerCase()) || topic.toLowerCase().includes(myTopic.toLowerCase())
+            )
+        );
+        return intersection.length > 0;
+    });
+
+    const openChat = (peerId: string, peerName: string, connectionId?: string) => {
+        if (!connectionId) return;
+        setActiveChatPeer({ id: peerId, name: peerName, connectionId });
+        setChatOpen(true);
+    };
+
+    // Helper function to display relative time
+    const getTimeAgo = (date: Date): string => {
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins} min ago`;
+
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
+
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays}d ago`;
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
@@ -159,6 +255,23 @@ export default function ConnectPage() {
                     <p className="text-slate-500 mt-1">Connect with students, share knowledge, and grow together</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    {/* Notification Toggle Button */}
+                    {notificationService.isSupported() && (
+                        <button
+                            onClick={handleEnableNotifications}
+                            className={`relative p-2 rounded-lg border transition-colors ${notificationsEnabled ? 'bg-green-50 border-green-300 text-green-700' : 'border-slate-300 hover:bg-slate-50'}`}
+                            title={notificationsEnabled ? 'Notifications enabled' : 'Enable notifications for new study partners'}
+                        >
+                            {notificationsEnabled ? (
+                                <Bell className="w-5 h-5" />
+                            ) : (
+                                <BellOff className="w-5 h-5" />
+                            )}
+                            {notificationsEnabled && (
+                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                            )}
+                        </button>
+                    )}
                     <div className="text-right">
                         <p className="text-2xl font-bold text-blue-600">{connectedPeers.length}</p>
                         <p className="text-xs text-slate-500">Connected</p>
@@ -169,6 +282,44 @@ export default function ConnectPage() {
                     </div>
                 </div>
             </header>
+
+            {/* Notification Permission Prompt */}
+            {showNotificationPrompt && (
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                >
+                    <GlassCard className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                                    <Bell className="w-5 h-5 text-purple-600" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-purple-900">Get notified about new study partners</h3>
+                                    <p className="text-sm text-purple-700">We'll send you a notification when someone studying similar topics appears</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    onClick={handleEnableNotifications}
+                                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm"
+                                >
+                                    Enable
+                                </Button>
+                                <Button
+                                    onClick={handleDismissNotificationPrompt}
+                                    variant="ghost"
+                                    className="text-slate-600 hover:text-slate-800 px-3 py-2 text-sm"
+                                >
+                                    Not now
+                                </Button>
+                            </div>
+                        </div>
+                    </GlassCard>
+                </motion.div>
+            )}
 
             {/* Pending Requests Banner */}
             {pendingRequests.length > 0 && (
@@ -218,6 +369,116 @@ export default function ConnectPage() {
                         })}
                     </div>
                 </GlassCard>
+            )}
+
+            {/* AI-Powered Recommended Study Partners (Real-time Activity-Based) */}
+            {recommendedPartners.length > 0 && (
+                <div className="mb-8">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <SparklesIcon className="w-6 h-6 text-purple-600 animate-pulse" />
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">Recommended Study Partners</h2>
+                                <p className="text-xs text-slate-500">Students studying similar topics right now</p>
+                            </div>
+                        </div>
+                        {loadingRecommendations && (
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                                Updating...
+                            </div>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {recommendedPartners.slice(0, 6).map(partner => {
+                            const connectionInfo = getConnectionStatus(partner.uid);
+                            const isConnected = connectionInfo.status === 'connected';
+                            const isPendingSent = connectionInfo.status === 'pending_sent';
+
+                            return (
+                                <motion.div
+                                    key={partner.uid}
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ duration: 0.3 }}
+                                >
+                                    <GlassCard className="p-5 border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 hover:shadow-xl transition-all">
+                                        {/* Partner Header */}
+                                        <div className="flex items-start gap-3 mb-3">
+                                            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-purple-500 to-pink-600 flex items-center justify-center text-white font-bold text-lg relative">
+                                                {partner.displayName.charAt(0)}
+                                                {/* Active indicator */}
+                                                <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full animate-pulse"></span>
+                                            </div>
+                                            <div className="flex-1">
+                                                <h3 className="font-bold text-slate-900">{partner.displayName}</h3>
+                                                <p className="text-xs text-slate-500">{partner.department} • Year {partner.academicYear}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Currently Studying Badge */}
+                                        <div className="mb-3 space-y-1">
+                                            <div className="flex items-center gap-1.5 text-xs text-purple-700 font-medium">
+                                                <BookOpen className="w-3.5 h-3.5" />
+                                                <span>Currently studying:</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {partner.matchedTopics.slice(0, 2).map((topic, idx) => (
+                                                    <span
+                                                        key={idx}
+                                                        className="px-2.5 py-1 bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 text-xs rounded-full font-medium border border-purple-200"
+                                                    >
+                                                        {topic}
+                                                    </span>
+                                                ))}
+                                                {partner.matchedTopics.length > 2 && (
+                                                    <span className="px-2 py-1 text-xs text-slate-500">
+                                                        +{partner.matchedTopics.length - 2} more
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Activity Timestamp */}
+                                        <div className="text-xs text-slate-400 mb-3 flex items-center gap-1">
+                                            <Clock className="w-3 h-3" />
+                                            <span>Active {getTimeAgo(partner.lastActiveAt)}</span>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        {isConnected ? (
+                                            <div className="flex gap-2">
+                                                <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2 text-sm h-9">
+                                                    <CheckCircle className="w-4 h-4" />
+                                                    Connected
+                                                </Button>
+                                                <Button
+                                                    onClick={() => openChat(partner.uid, partner.displayName, connectionInfo.connectionId)}
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white p-2"
+                                                >
+                                                    <MessageCircle className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        ) : isPendingSent ? (
+                                            <Button disabled className="w-full bg-gray-400 text-white gap-2 text-sm h-9 cursor-not-allowed">
+                                                <Clock className="w-4 h-4" />
+                                                Request Sent
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                onClick={() => handleConnect(partner.uid)}
+                                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white gap-2 text-sm h-9"
+                                            >
+                                                <UserPlus className="w-4 h-4" />
+                                                Connect
+                                            </Button>
+                                        )}
+                                    </GlassCard>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                </div>
             )}
 
             {/* Filters */}
@@ -310,7 +571,9 @@ export default function ConnectPage() {
                                                 <CheckCircle className="w-4 h-4" />
                                                 Connected
                                             </Button>
-                                            <Button className="bg-blue-600 hover:bg-blue-700 text-white p-2">
+                                            <Button
+                                                onClick={() => openChat(peer.userId, peer.displayName, connectionInfo.connectionId)}
+                                                className="bg-blue-600 hover:bg-blue-700 text-white p-2">
                                                 <MessageCircle className="w-4 h-4" />
                                             </Button>
                                         </>
@@ -356,6 +619,17 @@ export default function ConnectPage() {
                     <h3 className="text-lg font-semibold text-slate-700 mb-2">No peers found</h3>
                     <p className="text-slate-500">Try adjusting your search or filters</p>
                 </div>
+            )}
+            {/* Chat Modal */}
+            {activeChatPeer && (
+                <ChatModal
+                    isOpen={chatOpen}
+                    onClose={() => setChatOpen(false)}
+                    connectionId={activeChatPeer.connectionId}
+                    currentUserId={user?.uid || ''}
+                    peerName={activeChatPeer.name}
+                    peerId={activeChatPeer.id}
+                />
             )}
         </div>
     );

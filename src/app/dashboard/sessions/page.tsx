@@ -3,105 +3,74 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Calendar, Clock, Users, Video, ArrowRight, X, Link as LinkIcon, Plus, Sparkles, User, Search } from 'lucide-react';
+import { Calendar, Clock, Users, Video, ArrowRight, X, Plus, Edit, StopCircle, AlertCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import api from '@/lib/api';
+import sessionsService, { TeachingSession, CreateSessionData } from '@/lib/sessionsService';
 import { useAuth } from '@/context/AuthContext';
 
-interface Session {
-    sessionId: string;
-    title: string;
-    tutor: { name: string; email: string };
-    scheduledTime: string;
-    duration: number;
-    meetLink: string;
-    courseId: string;
-    attendees: number;
-    createdAt: string;
-    status: string;
-}
-
 export default function SessionsPage() {
-    const { token, user } = useAuth();
-    const [sessions, setSessions] = useState<Session[]>([]);
+    const { user } = useAuth();
+    const [sessions, setSessions] = useState<TeachingSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
+    const [showEdit, setShowEdit] = useState(false);
+    const [editingSession, setEditingSession] = useState<TeachingSession | null>(null);
     const [creating, setCreating] = useState(false);
-    const [activeTab, setActiveTab] = useState('upcoming');
 
     // Form state
     const [title, setTitle] = useState('');
-    const [tutorName, setTutorName] = useState('');
+    const [description, setDescription] = useState('');
     const [scheduledDate, setScheduledDate] = useState('');
     const [scheduledTime, setScheduledTime] = useState('');
-    const [duration, setDuration] = useState('60');
+    const [endTime, setEndTime] = useState('');
     const [meetLink, setMeetLink] = useState('');
 
-    // Auto-populate tutor name from logged-in user
+    // Real-time subscription to sessions
     useEffect(() => {
-        if (user) {
-            setTutorName(user.displayName || user.email?.split('@')[0] || '');
-        }
+        if (!user?.uid) return;
+
+        const courseId = 'CS101'; // TODO: Get from user context
+
+        const unsubscribe = sessionsService.subscribe(courseId, (updatedSessions) => {
+            setSessions(updatedSessions);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
     }, [user]);
 
-    useEffect(() => {
-        if (!token) return;
-        fetchSessions();
-    }, [token]);
-
-    const fetchSessions = async () => {
-        try {
-            const res = await api.get('/sessions');
-            setSessions(res.data);
-        } catch (error) {
-            console.error('Failed to fetch sessions:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleCreateSession = async () => {
-        if (!title.trim() || !scheduledDate || !scheduledTime || !meetLink) {
+        if (!title.trim() || !scheduledDate || !scheduledTime || !meetLink.trim()) {
             alert('Please fill in title, date, time, and meeting link');
+            return;
+        }
+
+        if (!user?.uid) {
+            alert('You must be logged in to create a session');
             return;
         }
 
         setCreating(true);
         try {
-            const scheduledDateTime = new Date(`${scheduledDate}T${scheduledTime}`);
-            const payload = {
+            const sessionData: CreateSessionData = {
                 title,
-                tutorName: tutorName || 'Instructor',
-                scheduledTime: scheduledDateTime.toISOString(),
-                duration: parseInt(duration),
-                meetLink, // Pass the manual link
-                courseId: 'default_course_id'
+                description,
+                courseId: 'CS101', // TODO: Get from user context
+                scheduledDate,
+                scheduledTime,
+                endTime: endTime || undefined,
+                meetLink,
+                createdBy: user.uid,
+                creatorName: user.displayName || user.email?.split('@')[0] || 'Instructor'
             };
 
-            console.log('Sending payload:', payload); // Debug log
-            // alert('Payload check: ' + JSON.stringify(payload)); // Uncomment to debug with alert
-
-            const response = await api.post('/sessions', payload);
-            console.log('Session created response:', response.data);
+            await sessionsService.createSession(sessionData);
 
             // Reset form
-            setTitle('');
-            setTutorName('');
-            setScheduledDate('');
-            setScheduledTime('');
-            setDuration('60');
-            setMeetLink('');
+            resetForm();
             setShowCreate(false);
 
-            // 1. Manually add to state for instant feedback
-            setSessions(prev => {
-                // Ensure we don't add duplicates if fetch happens fast
-                if (prev.some(s => s.sessionId === response.data.sessionId)) return prev;
-                return [...prev, response.data];
-            });
-
-            // 2. Refresh from server in background
-            fetchSessions();
+            // No need to manually refresh - real-time listener handles it!
         } catch (error) {
             console.error('Create session failed:', error);
             alert('Failed to create session');
@@ -110,109 +79,167 @@ export default function SessionsPage() {
         }
     };
 
+    const handleEditSession = async () => {
+        if (!editingSession || !user?.uid) return;
+
+        if (!title.trim() || !scheduledDate || !scheduledTime || !meetLink.trim()) {
+            alert('Please fill in all required fields');
+            return;
+        }
+
+        setCreating(true);
+        try {
+            await sessionsService.updateSession(editingSession.sessionId, user.uid, {
+                title,
+                description,
+                scheduledDate,
+                scheduledTime,
+                endTime,
+                meetLink,
+                createdBy: user.uid,
+                creatorName: user.displayName || 'Instructor',
+                courseId: 'CS101'
+            });
+
+            resetForm();
+            setShowEdit(false);
+            setEditingSession(null);
+
+            // Real-time listener updates UI automatically!
+        } catch (error) {
+            console.error('Edit session failed:', error);
+            alert('Failed to update session');
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const handleEndSession = async (session: TeachingSession) => {
+        if (!user?.uid) return;
+
+        if (!sessionsService.isCreator(session, user.uid)) {
+            alert('Only the session creator can end it');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to end "${session.title}"?`)) {
+            return;
+        }
+
+        try {
+            await sessionsService.endSession(session.sessionId, user.uid);
+            // Real-time listener updates UI!
+        } catch (error) {
+            console.error('End session failed:', error);
+            alert('Failed to end session');
+        }
+    };
+
+    const openEditModal = (session: TeachingSession) => {
+        if (!user?.uid || !sessionsService.isCreator(session, user.uid)) {
+            alert('Only the creator can edit this session');
+            return;
+        }
+
+        // Pre-fill form with existing data
+        setEditingSession(session);
+        setTitle(session.title);
+        setDescription(session.description || '');
+        setMeetLink(session.meetLink);
+
+        // Extract date and time from ISO string
+        const startDate = new Date(session.scheduledStartTime);
+        setScheduledDate(startDate.toISOString().split('T')[0]);
+        setScheduledTime(startDate.toTimeString().slice(0, 5));
+
+        if (session.scheduledEndTime) {
+            const endDate = new Date(session.scheduledEndTime);
+            setEndTime(endDate.toTimeString().slice(0, 5));
+        }
+
+        setShowEdit(true);
+    };
+
+    const resetForm = () => {
+        setTitle('');
+        setDescription('');
+        setScheduledDate('');
+        setScheduledTime('');
+        setEndTime('');
+        setMeetLink('');
+        setEditingSession(null);
+    };
+
     const formatDateTime = (isoString: string) => {
         const date = new Date(isoString);
         return {
-            date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+            date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
             time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
             isToday: new Date().toDateString() === date.toDateString()
         };
     };
 
-    // Animation variants
-    const container = {
-        hidden: { opacity: 0 },
-        show: {
-            opacity: 1,
-            transition: {
-                staggerChildren: 0.1
-            }
-        }
-    };
+    const getStatusBadge = (session: TeachingSession) => {
+        const status = sessionsService.getStatus(session);
 
-    const item = {
-        hidden: { opacity: 0, y: 20 },
-        show: { opacity: 1, y: 0 }
+        const styles = {
+            UPCOMING: 'bg-blue-100 text-blue-700 border-blue-200',
+            ONGOING: 'bg-green-100 text-green-700 border-green-200',
+            COMPLETED: 'bg-slate-100 text-slate-600 border-slate-200'
+        };
+
+        return (
+            <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase border ${styles[status]}`}>
+                {status}
+            </div>
+        );
     };
 
     return (
         <div className="max-w-7xl mx-auto space-y-8 pb-20">
-            {/* Elegant Header */}
+            {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
                 <div>
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-2 mb-2"
-                    >
-                        <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-bold tracking-wider uppercase">Live Learning</span>
-                        <div className="h-px w-10 bg-blue-200"></div>
-                    </motion.div>
                     <motion.h1
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
                         className="text-4xl md:text-5xl font-bold text-slate-900 tracking-tight"
                     >
-                        Sessions & <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Workshops</span>
+                        Teaching Sessions
                     </motion.h1>
                     <motion.p
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="text-slate-500 mt-2 text-lg max-w-2xl"
+                        transition={{ delay: 0.1 }}
+                        className="text-slate-500 mt-2 text-lg"
                     >
-                        Join interactive live sessions with professors and peers. Real-time collaboration, whiteboarding, and discussions.
+                        Interactive live sessions with real-time collaboration
                     </motion.p>
                 </div>
 
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.3 }}
+                <Button
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-6 rounded-2xl shadow-xl"
+                    onClick={() => setShowCreate(true)}
                 >
-                    <Button
-                        className="bg-slate-900 text-white hover:bg-slate-800 px-6 py-6 rounded-2xl shadow-xl shadow-slate-200 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
-                        onClick={() => setShowCreate(true)}
-                    >
-                        <Plus className="w-5 h-5 mr-2" />
-                        Host New Session
-                    </Button>
-                </motion.div>
+                    <Plus className="w-5 h-5 mr-2" />
+                    Host New Session
+                </Button>
             </div>
 
-            {/* Navigation Tabs */}
-            <div className="flex items-center gap-1 border-b border-slate-200 mb-8 overflow-x-auto">
-                {['Upcoming', 'Live Now', 'Past Recordings', 'My Schedule'].map((tab) => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab.toLowerCase().split(' ')[0])}
-                        className={`px-6 py-3 text-sm font-medium transition-colors relative whitespace-nowrap ${activeTab === tab.toLowerCase().split(' ')[0]
-                            ? 'text-blue-600'
-                            : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                    >
-                        {tab}
-                        {activeTab === tab.toLowerCase().split(' ')[0] && (
-                            <motion.div
-                                layoutId="activeTab"
-                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
-                            />
-                        )}
-                    </button>
-                ))}
-            </div>
-
-            {/* Create Session Modal */}
+            {/* Create/Edit Session Modal */}
             <AnimatePresence>
-                {showCreate && (
+                {(showCreate || showEdit) && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                            onClick={() => setShowCreate(false)}
+                            onClick={() => {
+                                setShowCreate(false);
+                                setShowEdit(false);
+                                resetForm();
+                            }}
                         />
                         <motion.div
                             initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -223,11 +250,19 @@ export default function SessionsPage() {
                             <div className="p-8">
                                 <div className="flex items-center justify-between mb-8">
                                     <div>
-                                        <h2 className="text-2xl font-bold text-slate-900">Schedule Session</h2>
-                                        <p className="text-slate-500">Create a room for lectures or group study</p>
+                                        <h2 className="text-2xl font-bold text-slate-900">
+                                            {showEdit ? 'Edit Session' : 'Schedule New Session'}
+                                        </h2>
+                                        <p className="text-slate-500">
+                                            {showEdit ? 'Update session details' : 'Create a room for lectures or group study'}
+                                        </p>
                                     </div>
                                     <button
-                                        onClick={() => setShowCreate(false)}
+                                        onClick={() => {
+                                            setShowCreate(false);
+                                            setShowEdit(false);
+                                            resetForm();
+                                        }}
                                         className="p-2 hover:bg-slate-100 rounded-full transition-colors"
                                     >
                                         <X className="w-6 h-6 text-slate-400" />
@@ -236,94 +271,97 @@ export default function SessionsPage() {
 
                                 <div className="space-y-6">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-bold text-slate-700">Topic or Title</label>
+                                        <label className="text-sm font-bold text-slate-700">Title *</label>
                                         <Input
                                             value={title}
                                             onChange={(e) => setTitle(e.target.value)}
                                             placeholder="e.g. Advanced System Design Patterns"
-                                            className="h-12 text-lg bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                                            className="h-12 text-lg"
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-6">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700">Instructor</label>
-                                            <Input
-                                                value={tutorName}
-                                                onChange={(e) => setTutorName(e.target.value)}
-                                                placeholder="Dr. Smith"
-                                                className="h-12 bg-slate-50 border-slate-200"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700">Duration (min)</label>
-                                            <Input
-                                                type="number"
-                                                value={duration}
-                                                onChange={(e) => setDuration(e.target.value)}
-                                                className="h-12 bg-slate-50 border-slate-200"
-                                            />
-                                        </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700">Description (optional)</label>
+                                        <textarea
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                            placeholder="Add session details, topics to be covered, prerequisites, etc."
+                                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:outline-none resize-none"
+                                            rows={3}
+                                        />
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-sm font-bold text-slate-700">Meeting Link</label>
+                                        <label className="text-sm font-bold text-slate-700">Meeting Link *</label>
                                         <div className="flex gap-2">
                                             <Input
                                                 value={meetLink}
                                                 onChange={(e) => setMeetLink(e.target.value)}
                                                 placeholder="https://meet.google.com/..."
-                                                className="h-12 bg-slate-50 border-slate-200 flex-1"
+                                                className="h-12 flex-1"
                                             />
                                             <a
                                                 href="https://meet.google.com/new"
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="h-12 px-4 bg-green-50 text-green-700 hover:bg-green-100 rounded-xl flex items-center gap-2 text-sm font-bold transition-colors whitespace-nowrap border border-green-200"
+                                                className="h-12 px-4 bg-green-50 text-green-700 hover:bg-green-100 rounded-xl flex items-center gap-2 text-sm font-bold transition-colors border border-green-200"
                                             >
                                                 <Video className="w-4 h-4" />
-                                                Generate New
+                                                New
                                             </a>
                                         </div>
-                                        <p className="text-xs text-slate-500">Click "Generate New" to create a room, then paste the link here.</p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-6">
                                         <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700">Date</label>
+                                            <label className="text-sm font-bold text-slate-700">Date *</label>
                                             <Input
                                                 type="date"
                                                 value={scheduledDate}
                                                 onChange={(e) => setScheduledDate(e.target.value)}
-                                                className="h-12 bg-slate-50 border-slate-200"
+                                                className="h-12"
                                                 min={new Date().toISOString().split('T')[0]}
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700">Time</label>
+                                            <label className="text-sm font-bold text-slate-700">Start Time *</label>
                                             <Input
                                                 type="time"
                                                 value={scheduledTime}
                                                 onChange={(e) => setScheduledTime(e.target.value)}
-                                                className="h-12 bg-slate-50 border-slate-200"
+                                                className="h-12"
                                             />
                                         </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700">End Time (optional)</label>
+                                        <Input
+                                            type="time"
+                                            value={endTime}
+                                            onChange={(e) => setEndTime(e.target.value)}
+                                            className="h-12"
+                                        />
                                     </div>
 
                                     <div className="pt-4 flex items-center justify-end gap-3">
                                         <Button
                                             variant="ghost"
-                                            onClick={() => setShowCreate(false)}
+                                            onClick={() => {
+                                                setShowCreate(false);
+                                                setShowEdit(false);
+                                                resetForm();
+                                            }}
                                             className="h-12 px-6"
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            onClick={handleCreateSession}
+                                            onClick={showEdit ? handleEditSession : handleCreateSession}
                                             disabled={creating}
-                                            className="h-12 px-8 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-200 w-full md:w-auto"
+                                            className="h-12 px-8 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg"
                                         >
-                                            {creating ? 'Scheduling...' : 'Create Session'}
+                                            {creating ? 'Saving...' : showEdit ? 'Update Session' : 'Create Session'}
                                         </Button>
                                     </div>
                                 </div>
@@ -338,7 +376,7 @@ export default function SessionsPage() {
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                     <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
-                    <p className="text-slate-400">Loading your sessions...</p>
+                    <p className="text-slate-400">Loading sessions...</p>
                 </div>
             ) : sessions.length === 0 ? (
                 <motion.div
@@ -351,86 +389,136 @@ export default function SessionsPage() {
                     </div>
                     <h3 className="text-xl font-bold text-slate-800 mb-2">No Sessions Scheduled</h3>
                     <p className="text-slate-500 max-w-md mx-auto mb-8">
-                        There are no upcoming sessions at the moment. Be the first to host a workshop or study group!
+                        Be the first to host a session!
                     </p>
-                    <Button onClick={() => setShowCreate(true)} className="bg-blue-600 text-white hover:bg-blue-700 px-8 py-3 rounded-full shadow-lg shadow-blue-200">
+                    <Button onClick={() => setShowCreate(true)} className="bg-blue-600 text-white hover:bg-blue-700 px-8 py-3 rounded-full shadow-lg">
                         Create First Session
                     </Button>
                 </motion.div>
             ) : (
-                <motion.div
-                    variants={container}
-                    initial="hidden"
-                    animate="show"
-                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                >
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {sessions.map((session) => {
-                        const { date, time, isToday } = formatDateTime(session.scheduledTime);
+                        const { date, time } = formatDateTime(session.scheduledStartTime);
+                        const isCreator = user?.uid && sessionsService.isCreator(session, user.uid);
+                        const canJoin = sessionsService.canJoin(session);
+
                         return (
-                            <motion.div key={session.sessionId} variants={item}>
-                                <div className="group relative bg-white/70 backdrop-blur-xl rounded-3xl p-1 overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-1">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-                                    <div className="relative p-6 h-full flex flex-col">
-                                        {/* Status Badge */}
-                                        <div className="flex items-start justify-between mb-6">
-                                            <div className={`
-                                                px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase
-                                                ${isToday ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}
-                                            `}>
-                                                {isToday ? 'Happening Today' : 'Upcoming'}
-                                            </div>
-                                            <div className="w-10 h-10 rounded-full bg-white shadow-sm border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
-                                                <Video className="w-5 h-5" />
-                                            </div>
+                            <motion.div
+                                key={session.sessionId}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="group relative bg-white rounded-3xl p-7 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1"
+                            >
+                                {/* Status Badge */}
+                                <div className="flex items-start justify-between mb-4">
+                                    {getStatusBadge(session)}
+                                    {isCreator && (
+                                        <div className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                                            <Users className="w-3 h-3" />
+                                            Creator
                                         </div>
+                                    )}
+                                </div>
 
-                                        {/* Content */}
-                                        <h3 className="text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors mb-2 line-clamp-2">
-                                            {session.title}
-                                        </h3>
+                                {/* Content */}
+                                <h3 className="text-xl font-bold text-slate-900 mb-2 line-clamp-2">
+                                    {session.title}
+                                </h3>
 
-                                        <div className="flex items-center gap-2 mb-6">
-                                            <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold">
-                                                {session.tutor.name.charAt(0)}
-                                            </div>
-                                            <span className="text-sm font-medium text-slate-600">{session.tutor.name}</span>
-                                        </div>
+                                {session.description && (
+                                    <p className="text-sm text-slate-600 mb-4 line-clamp-2">
+                                        {session.description}
+                                    </p>
+                                )}
 
-                                        {/* Metadata Card */}
-                                        <div className="mt-auto bg-slate-50/80 rounded-2xl p-4 space-y-3 group-hover:bg-white/80 transition-colors">
-                                            <div className="flex items-center justify-between text-sm">
-                                                <div className="flex items-center gap-2 text-slate-600">
-                                                    <Calendar className="w-4 h-4 text-slate-400" />
-                                                    <span className="font-semibold">{date}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-slate-600">
-                                                    <Clock className="w-4 h-4 text-slate-400" />
-                                                    <span>{time}</span>
-                                                </div>
-                                            </div>
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold">
+                                        {session.creatorName.charAt(0)}
+                                    </div>
+                                    <span className="text-sm font-medium text-slate-600">
+                                        {session.creatorName}
+                                    </span>
+                                </div>
 
-                                            <div className="pt-3 border-t border-slate-200/50 flex items-center justify-between">
-                                                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                                                    <Users className="w-3.5 h-3.5" />
-                                                    {session.attendees} Registered
-                                                </div>
+                                {/* Time Info */}
+                                <div className="bg-slate-50 rounded-2xl p-4 space-y-2 mb-4">
+                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                        <Calendar className="w-4 h-4 text-slate-400" />
+                                        <span className="font-semibold">{date}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                        <Clock className="w-4 h-4 text-slate-400" />
+                                        <span>{time}</span>
+                                    </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="space-y-2">
+                                    {isCreator ? (
+                                        <>
+                                            {canJoin && (
                                                 <a
                                                     href={session.meetLink}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors bg-blue-50 px-3 py-1.5 rounded-lg group-hover:bg-blue-600 group-hover:text-white"
+                                                    className="block w-full text-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors"
                                                 >
-                                                    Join Room <ArrowRight className="w-3.5 h-3.5" />
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        Join Session <ArrowRight className="w-4 h-4" />
+                                                    </div>
                                                 </a>
+                                            )}
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    onClick={() => openEditModal(session)}
+                                                    variant="outline"
+                                                    className="flex-1 gap-2 border-slate-200"
+                                                >
+                                                    <Edit className="w-4 h-4" />
+                                                    Edit
+                                                </Button>
+                                                {session.status !== 'COMPLETED' && (
+                                                    <Button
+                                                        onClick={() => handleEndSession(session)}
+                                                        variant="outline"
+                                                        className="flex-1 gap-2 border-red-200 text-red-600 hover:bg-red-50"
+                                                    >
+                                                        <StopCircle className="w-4 h-4" />
+                                                        End
+                                                    </Button>
+                                                )}
                                             </div>
-                                        </div>
-                                    </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {canJoin ? (
+                                                <a
+                                                    href={session.meetLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="block w-full text-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors"
+                                                >
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        Join Now <ArrowRight className="w-4 h-4" />
+                                                    </div>
+                                                </a>
+                                            ) : (
+                                                <div className="w-full text-center px-4 py-3 bg-slate-100 text-slate-500 rounded-xl font-medium">
+                                                    Session Ended
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Registration removed - always show 0 */}
+                                <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                    <span>Registered: 0</span>
                                 </div>
                             </motion.div>
                         );
                     })}
-                </motion.div>
+                </div>
             )}
         </div>
     );
