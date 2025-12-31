@@ -26,6 +26,7 @@ export interface UserProfile {
     isOnline: boolean;
     lastSeen: any;
     createdAt: any;
+    role?: 'student' | 'professor'; // Role identifier
 }
 
 export interface Connection {
@@ -82,6 +83,29 @@ export async function getAllUsers(): Promise<UserProfile[]> {
         return [];
     }
 }
+
+// Get single user profile
+export async function getUserProfile(userId: string): Promise<UserProfile | null> {
+    try {
+        const docRef = doc(db, 'users', userId);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            return {
+                ...data,
+                lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate().toISOString() : new Date().toISOString(),
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
+            } as UserProfile;
+        }
+        return null;
+    } catch (error) {
+        console.error('❌ Error fetching user profile:', error);
+        return null;
+    }
+}
+
+
 
 // Send connection request
 export async function sendConnectionRequest(fromUserId: string, toUserId: string): Promise<string> {
@@ -187,6 +211,7 @@ export async function updateUserTopics(userId: string, newTopics: string[]): Pro
 export const peersService = {
     createUserProfile,
     getAllUsers,
+    getUserProfile,
     sendConnectionRequest,
     getUserConnections,
     updateConnectionStatus,

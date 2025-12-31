@@ -14,7 +14,9 @@ import ChatModal from '@/components/ChatModal';
 import { Sparkles as SparklesIcon } from 'lucide-react';
 
 export default function ConnectPage() {
-    const { user } = useAuth();
+    const { user, professorSession } = useAuth();
+    const currentUserId = user?.uid || professorSession?.uid;
+
     const { notificationsEnabled, setNotificationsEnabled, recommendedPartners } = useNotifications();
     const [peers, setPeers] = useState<UserProfile[]>([]);
     const [connections, setConnections] = useState<Connection[]>([]);
@@ -31,35 +33,63 @@ export default function ConnectPage() {
     // Load peers and connections
     useEffect(() => {
         const loadData = async () => {
-            if (!user?.uid) return;
+            if (!currentUserId) return;
 
             try {
-                // Create/update current user's profile
-                await peersService.createUserProfile({
-                    userId: user.uid,
-                    displayName: user.displayName || '',
-                    email: user.email || '',
-                    department: 'Computer Science',
-                    year: 3,
-                    interests: ['AI', 'Web Development'],
-                    photoURL: user.photoURL
-                });
+                // Create/update current user's profile ONLY if it's a student
+                if (user?.uid) {
+                    await peersService.createUserProfile({
+                        userId: user.uid,
+                        displayName: user.displayName || '',
+                        email: user.email || '',
+                        department: 'Computer Science',
+                        year: 3,
+                        interests: ['AI', 'Web Development'],
+                        photoURL: user.photoURL
+                    });
+                }
 
                 // Load all peers
-                const allUsers = await peersService.getAllUsers();
-                // Filter out current user
-                const otherUsers = allUsers.filter(u => u.userId !== user.uid);
-                setPeers(otherUsers);
+                let allUsers = await peersService.getAllUsers();
 
                 // Load connections
-                const userConnections = await peersService.getUserConnections(user.uid);
+                const userConnections = await peersService.getUserConnections(currentUserId);
                 setConnections(userConnections);
 
+                // Check for pending requests from users NOT in allUsers
+                const pendingRequestUserIds = userConnections
+                    .filter(c => c.toUserId === currentUserId && c.status === 'pending')
+                    .map(c => c.fromUserId);
+
+                // Find IDs that are missing from allUsers
+                const missingUserIds = pendingRequestUserIds.filter(id => !allUsers.find(u => u.userId === id));
+
+                if (missingUserIds.length > 0) {
+                    console.log('Fetching missing profiles for pending requests:', missingUserIds);
+                    try {
+                        const missingProfiles = await Promise.all(
+                            missingUserIds.map(id => peersService.getUserProfile(id))
+                        );
+                        const validMissingProfiles = missingProfiles.filter(p => p !== null) as UserProfile[];
+                        allUsers = [...allUsers, ...validMissingProfiles];
+                    } catch (e) {
+                        console.error('Error fetching missing profiles:', e);
+                    }
+                }
+
+                // Filter out current user
+                const otherUsers = allUsers.filter(u => u.userId !== currentUserId);
+
+                // Remove duplicates (just in case)
+                const uniqueUsers = Array.from(new Map(otherUsers.map(item => [item.userId, item])).values());
+
+                setPeers(uniqueUsers);
+
                 // Get my profile for matching
-                const myProfile = allUsers.find(u => u.userId === user.uid);
+                const myProfile = allUsers.find(u => u.userId === currentUserId);
                 if (myProfile) setCurrentUserProfile(myProfile);
 
-                console.log('✅ Loaded', otherUsers.length, 'peers and', userConnections.length, 'connections');
+                console.log('✅ Loaded', uniqueUsers.length, 'peers and', userConnections.length, 'connections');
             } catch (error) {
                 console.error('❌ Error loading peers:', error);
             } finally {
@@ -71,7 +101,7 @@ export default function ConnectPage() {
         // Refresh every 30 seconds
         const interval = setInterval(loadData, 30000);
         return () => clearInterval(interval);
-    }, [user]);
+    }, [currentUserId, user]);
 
 
     // Note: Recommendations are now loaded globally by NotificationProvider
@@ -124,12 +154,12 @@ export default function ConnectPage() {
 
     // Send connection request
     const handleConnect = async (peerId: string) => {
-        if (!user?.uid) return;
+        if (!currentUserId) return;
 
         try {
-            await peersService.sendConnectionRequest(user.uid, peerId);
+            await peersService.sendConnectionRequest(currentUserId, peerId);
             // Reload connections
-            const userConnections = await peersService.getUserConnections(user.uid);
+            const userConnections = await peersService.getUserConnections(currentUserId);
             setConnections(userConnections);
             console.log('✅ Connection request sent');
         } catch (error) {
@@ -139,10 +169,11 @@ export default function ConnectPage() {
 
     // Accept connection request
     const handleAccept = async (connectionId: string) => {
+        if (!currentUserId) return;
         try {
             await peersService.updateConnectionStatus(connectionId, 'accepted');
             // Reload connections
-            const userConnections = await peersService.getUserConnections(user!.uid);
+            const userConnections = await peersService.getUserConnections(currentUserId);
             setConnections(userConnections);
             console.log('✅ Connection accepted');
         } catch (error) {
@@ -152,10 +183,11 @@ export default function ConnectPage() {
 
     // Reject connection request
     const handleReject = async (connectionId: string) => {
+        if (!currentUserId) return;
         try {
             await peersService.updateConnectionStatus(connectionId, 'rejected');
             // Reload connections
-            const userConnections = await peersService.getUserConnections(user!.uid);
+            const userConnections = await peersService.getUserConnections(currentUserId);
             setConnections(userConnections);
             console.log('✅ Connection rejected');
         } catch (error) {
@@ -166,14 +198,14 @@ export default function ConnectPage() {
     // Get connection status for a peer
     const getConnectionStatus = (peerId: string): { status: string; connectionId?: string; isPending?: boolean } => {
         // Check if we sent a request to this peer
-        const sentRequest = connections.find(c => c.fromUserId === user?.uid && c.toUserId === peerId);
+        const sentRequest = connections.find(c => c.fromUserId === currentUserId && c.toUserId === peerId);
         if (sentRequest) {
             if (sentRequest.status === 'pending') return { status: 'pending_sent', connectionId: sentRequest.connectionId };
             if (sentRequest.status === 'accepted') return { status: 'connected', connectionId: sentRequest.connectionId };
         }
 
         // Check if this peer sent us a request
-        const receivedRequest = connections.find(c => c.fromUserId === peerId && c.toUserId === user?.uid);
+        const receivedRequest = connections.find(c => c.fromUserId === peerId && c.toUserId === currentUserId);
         if (receivedRequest) {
             if (receivedRequest.status === 'pending') return { status: 'pending_received', connectionId: receivedRequest.connectionId, isPending: true };
             if (receivedRequest.status === 'accepted') return { status: 'connected', connectionId: receivedRequest.connectionId };
@@ -193,7 +225,7 @@ export default function ConnectPage() {
 
     // Get pending requests (requests sent to us)
     const pendingRequests = connections.filter(c =>
-        c.toUserId === user?.uid && c.status === 'pending'
+        c.toUserId === currentUserId && c.status === 'pending'
     );
 
     // Get connected peers
@@ -344,7 +376,14 @@ export default function ConnectPage() {
                                             {requester.displayName.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="font-semibold text-slate-800">{requester.displayName}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold text-slate-800">{requester.displayName}</p>
+                                                {requester.role === 'professor' && (
+                                                    <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-200">
+                                                        Professor
+                                                    </span>
+                                                )}
+                                            </div>
                                             <p className="text-xs text-slate-500">{requester.department} • Year {requester.year}</p>
                                         </div>
                                     </div>
@@ -540,7 +579,14 @@ export default function ConnectPage() {
                                             )}
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-slate-800">{peer.displayName}</h3>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="font-bold text-slate-800">{peer.displayName}</h3>
+                                                {peer.role === 'professor' && (
+                                                    <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-200">
+                                                        Professor
+                                                    </span>
+                                                )}
+                                            </div>
                                             <p className="text-xs text-slate-500">{peer.department}</p>
                                         </div>
                                     </div>
@@ -626,7 +672,7 @@ export default function ConnectPage() {
                     isOpen={chatOpen}
                     onClose={() => setChatOpen(false)}
                     connectionId={activeChatPeer.connectionId}
-                    currentUserId={user?.uid || ''}
+                    currentUserId={currentUserId || ''}
                     peerName={activeChatPeer.name}
                     peerId={activeChatPeer.id}
                 />

@@ -2,10 +2,10 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Book, MessageCircle, Video, Users, History } from 'lucide-react';
+import { LayoutDashboard, Book, MessageCircle, Video, Users, History, GraduationCap } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
-const links = [
+const studentLinks = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'AI Notebook', href: '/dashboard/notebook', icon: Book },
     { name: 'Doubt Forum', href: '/dashboard/forum', icon: MessageCircle },
@@ -14,9 +14,20 @@ const links = [
     { name: 'Study History', href: '/dashboard/history', icon: History },
 ];
 
+const professorLinks = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'AI Notebook', href: '/dashboard/notebook', icon: Book },
+    { name: 'Sessions', href: '/dashboard/sessions', icon: Video },
+    { name: 'Peer Connect', href: '/dashboard/connect', icon: Users },
+    { name: 'Professor View', href: '/dashboard/professor', icon: GraduationCap },
+];
+
 export default function Navigation() {
     const pathname = usePathname();
-    const { user } = useAuth();
+    const { user, isProfessor } = useAuth();
+
+    // Show different links based on role
+    const links = isProfessor ? professorLinks : studentLinks;
 
     return (
         <nav className="h-screen w-20 hover:w-64 transition-all duration-500 ease-out group fixed left-0 top-0 z-50 flex flex-col bg-slate-950/80 backdrop-blur-xl border-r border-white/10">

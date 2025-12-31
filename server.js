@@ -855,6 +855,85 @@ app.post('/echo-1928rn/us-central1/api/sessions/register', async (req, res) => {
     }
 });
 
+// ============================================
+// PROFESSOR AUTHENTICATION (HARDCODED CREDENTIALS)
+// ============================================
+
+// Hardcoded professor credentials (MVP ONLY)
+const PROFESSOR_CREDENTIALS = {
+    email: 'Professor@gmail.com',
+    password: 'Rk@1928'
+};
+
+/**
+ * POST /auth/professor-login
+ * Verify professor credentials and issue session token
+ */
+app.post('/echo-1928rn/us-central1/api/auth/professor-login', (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        console.log('🔐 Professor login attempt:', email);
+
+        // Validate credentials
+        if (email !== PROFESSOR_CREDENTIALS.email || password !== PROFESSOR_CREDENTIALS.password) {
+            console.log('❌ Invalid professor credentials');
+            return res.status(401).json({
+                error: 'Invalid credentials',
+                message: 'Access denied'
+            });
+        }
+
+        // Create professor session token
+        const professorSession = {
+            role: 'professor',
+            email: PROFESSOR_CREDENTIALS.email,
+            name: 'Professor',
+            uid: 'professor_001', // Fixed UID for professor
+            loginTime: new Date().toISOString()
+        };
+
+        console.log('✅ Professor authenticated successfully');
+
+        res.status(200).json({
+            success: true,
+            session: professorSession,
+            message: 'Professor login successful'
+        });
+
+    } catch (error) {
+        console.error('❌ Professor login error:', error);
+        res.status(500).json({
+            error: 'Login failed',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * Middleware to verify professor access
+ */
+function verifyProfessorAccess(req, res, next) {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Professor ')) {
+        return res.status(403).json({
+            error: 'Access denied',
+            message: 'Professor authentication required'
+        });
+    }
+
+    // In production, verify JWT token here
+    // For MVP, we're using a simple prefix check
+
+    req.professorAuth = {
+        role: 'professor',
+        email: PROFESSOR_CREDENTIALS.email
+    };
+
+    next();
+}
+
 app.listen(PORT, () => {
     console.log(`\n🚀 Echo Platform API Server Running!`);
     console.log(`   Local: http://localhost:${PORT}/`);

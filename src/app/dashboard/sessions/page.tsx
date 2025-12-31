@@ -11,7 +11,11 @@ import studyHistoryService from '@/lib/studyHistoryService';
 import { useAuth } from '@/context/AuthContext';
 
 export default function SessionsPage() {
-    const { user } = useAuth();
+    const { user, isProfessor, professorSession } = useAuth();
+    const currentUserId = user?.uid || professorSession?.uid;
+    const currentUserName = user?.displayName || professorSession?.name;
+    const currentUserEmail = user?.email || professorSession?.email;
+
     const [sessions, setSessions] = useState<TeachingSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
@@ -40,7 +44,7 @@ export default function SessionsPage() {
 
     // Real-time subscription to sessions
     useEffect(() => {
-        if (!user?.uid) return;
+        if (!currentUserId) return;
 
         const courseId = 'CS101'; // TODO: Get from user context
 
@@ -50,11 +54,11 @@ export default function SessionsPage() {
         });
 
         return () => unsubscribe();
-    }, [user]);
+    }, [currentUserId]);
 
     // Real-time registration status for all sessions
     useEffect(() => {
-        if (!user?.uid || sessions.length === 0) return;
+        if (!currentUserId || sessions.length === 0) return;
 
         const unsubscribers: (() => void)[] = [];
 
@@ -62,7 +66,7 @@ export default function SessionsPage() {
             // Subscribe to registration status
             const regUnsub = registrationService.subscribeToRegistrationStatus(
                 session.sessionId,
-                user.uid,
+                currentUserId,
                 (isRegistered) => {
                     setRegistrations(prev => ({
                         ...prev,
@@ -88,10 +92,10 @@ export default function SessionsPage() {
         return () => {
             unsubscribers.forEach(unsub => unsub());
         };
-    }, [user, sessions]);
+    }, [currentUserId, sessions]);
 
     const handleRegister = async (sessionId: string) => {
-        if (!user?.uid || !user?.email) {
+        if (!currentUserId || !currentUserEmail) {
             alert('Please log in to register');
             return;
         }
@@ -99,13 +103,13 @@ export default function SessionsPage() {
         setRegistering(prev => ({ ...prev, [sessionId]: true }));
 
         try {
-            const userName = user.displayName || user.email.split('@')[0];
+            const userName = currentUserName || currentUserEmail.split('@')[0];
             const academicYear = 'Not specified'; // TODO: Get from user profile
 
             const result = await registrationService.registerForSession(
                 sessionId,
-                user.uid,
-                user.email,
+                currentUserId,
+                currentUserEmail,
                 userName,
                 academicYear
             );
@@ -147,7 +151,7 @@ export default function SessionsPage() {
             return;
         }
 
-        if (!user?.uid) {
+        if (!currentUserId) {
             alert('You must be logged in to create a session');
             return;
         }
@@ -162,8 +166,8 @@ export default function SessionsPage() {
                 scheduledTime,
                 endTime: endTime || undefined,
                 meetLink,
-                createdBy: user.uid,
-                creatorName: user.displayName || user.email?.split('@')[0] || 'Instructor'
+                createdBy: currentUserId,
+                creatorName: currentUserName || currentUserEmail?.split('@')[0] || 'Instructor'
             };
 
             await sessionsService.createSession(sessionData);
@@ -182,7 +186,7 @@ export default function SessionsPage() {
     };
 
     const handleEditSession = async () => {
-        if (!editingSession || !user?.uid) return;
+        if (!editingSession || !currentUserId) return;
 
         if (!title.trim() || !scheduledDate || !scheduledTime || !meetLink.trim()) {
             alert('Please fill in all required fields');
@@ -191,15 +195,15 @@ export default function SessionsPage() {
 
         setCreating(true);
         try {
-            await sessionsService.updateSession(editingSession.sessionId, user.uid, {
+            await sessionsService.updateSession(editingSession.sessionId, currentUserId, {
                 title,
                 description,
                 scheduledDate,
                 scheduledTime,
                 endTime,
                 meetLink,
-                createdBy: user.uid,
-                creatorName: user.displayName || 'Instructor',
+                createdBy: currentUserId,
+                creatorName: currentUserName || 'Instructor',
                 courseId: 'CS101'
             });
 
@@ -217,9 +221,9 @@ export default function SessionsPage() {
     };
 
     const handleEndSession = async (session: TeachingSession) => {
-        if (!user?.uid) return;
+        if (!currentUserId) return;
 
-        if (!sessionsService.isCreator(session, user.uid)) {
+        if (!sessionsService.isCreator(session, currentUserId)) {
             alert('Only the session creator can end it');
             return;
         }
@@ -229,7 +233,7 @@ export default function SessionsPage() {
         }
 
         try {
-            await sessionsService.endSession(session.sessionId, user.uid);
+            await sessionsService.endSession(session.sessionId, currentUserId);
             // Real-time listener updates UI!
         } catch (error) {
             console.error('End session failed:', error);
@@ -238,7 +242,7 @@ export default function SessionsPage() {
     };
 
     const openEditModal = (session: TeachingSession) => {
-        if (!user?.uid || !sessionsService.isCreator(session, user.uid)) {
+        if (!currentUserId || !sessionsService.isCreator(session, currentUserId)) {
             alert('Only the creator can edit this session');
             return;
         }
@@ -501,7 +505,7 @@ export default function SessionsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {sessions.map((session) => {
                         const { date, time } = formatDateTime(session.scheduledStartTime);
-                        const isCreator = user?.uid && sessionsService.isCreator(session, user.uid);
+                        const isCreator = currentUserId && sessionsService.isCreator(session, currentUserId);
                         const canJoin = sessionsService.canJoin(session);
 
                         return (
@@ -614,9 +618,9 @@ export default function SessionsPage() {
                                                             rel="noopener noreferrer"
                                                             onClick={() => {
                                                                 // Track session attendance in study history
-                                                                if (user?.uid) {
+                                                                if (currentUserId) {
                                                                     studyHistoryService.recordSessionAttended(
-                                                                        user.uid,
+                                                                        currentUserId,
                                                                         'CS101',
                                                                         session.sessionId || '',
                                                                         session.title,
