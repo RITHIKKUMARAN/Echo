@@ -153,7 +153,68 @@ export function subscribeToSessions(
     callback: (sessions: TeachingSession[]) => void
 ): () => void {
     try {
-        // Simple query without orderBy (no index needed!)
+        // Check if professor is logged in
+        const professorSession = localStorage.getItem('professorSession');
+        if (professorSession) {
+            // For professors: use polling instead of real-time listeners
+            let intervalId: NodeJS.Timeout;
+
+            const fetchSessions = async () => {
+                try {
+                    const session = JSON.parse(professorSession);
+                    const response = await fetch(`http://localhost:5001/echo-1928rn/us-central1/api/professor/sessions/${courseId}`, {
+                        headers: {
+                            'Authorization': `Professor ${session.uid}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const sessions = (data.sessions || []).map((s: any) => ({
+                            sessionId: s.sessionId,
+                            title: s.title || 'Untitled Session',
+                            description: s.description || '',
+                            courseId: s.courseId,
+                            scheduledStartTime: s.scheduledStartTime,
+                            scheduledEndTime: s.scheduledEndTime || undefined,
+                            meetLink: s.meetLink,
+                            createdBy: s.createdBy,
+                            creatorName: s.creatorName || 'Unknown',
+                            status: s.status || 'UPCOMING',
+                            createdAt: s.createdAt?.toDate ? s.createdAt.toDate() : new Date(),
+                            updatedAt: s.updatedAt?.toDate ? s.updatedAt.toDate() : undefined
+                        }));
+
+                        // Client-side sorting
+                        sessions.sort((a, b) => {
+                            const timeA = new Date(a.scheduledStartTime).getTime();
+                            const timeB = new Date(b.scheduledStartTime).getTime();
+                            return timeA - timeB;
+                        });
+
+                        callback(sessions);
+                        console.log('✅ Real-time update:', sessions.length, 'sessions for course', courseId);
+                    }
+                } catch (error) {
+                    console.warn('Professor sessions polling failed:', error);
+                    callback([]);
+                }
+            };
+
+            // Initial fetch
+            fetchSessions();
+
+            // Poll every 5 seconds
+            intervalId = setInterval(fetchSessions, 5000);
+
+            // Return cleanup function
+            return () => {
+                if (intervalId) clearInterval(intervalId);
+            };
+        }
+
+        // For students: use Firestore real-time listeners
         const q = query(
             collection(db, 'teachingSessions'),
             where('courseId', '==', courseId)

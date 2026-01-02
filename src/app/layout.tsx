@@ -9,8 +9,11 @@ import { AuthProvider } from '@/context/AuthContext';
 const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit' });
 
 export const metadata: Metadata = {
-  title: 'Echo - AI Learning Platform',
+  title: 'Echo - Your University OS',
   description: 'A futuristic college-exclusive AI learning platform.',
+  icons: {
+    icon: '/echo_logo.png',
+  },
 };
 
 export default function RootLayout({

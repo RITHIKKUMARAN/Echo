@@ -1,6 +1,3 @@
-// Doubt Escalation Service
-// Automatic escalation: OPEN → SENIOR_VISIBLE (30min) → PROFESSOR (2hr)
-
 import {
     collection,
     query,
@@ -17,10 +14,6 @@ import { db } from './firebase';
 const TIME_TO_SENIOR = 30 * 60 * 1000; // 30 minutes
 const TIME_TO_PROFESSOR = 2 * 60 * 60 * 1000; // 2 hours
 
-/**
- * Check and escalate doubts based on time thresholds
- * Should be called periodically (e.g., every minute)
- */
 export async function checkAndEscalateDoubts(): Promise<number> {
     try {
         const now = new Date();
@@ -78,9 +71,7 @@ export async function checkAndEscalateDoubts(): Promise<number> {
     }
 }
 
-/**
- * Get doubts escalated to professors
- */
+
 export async function getProfessorDoubts(courseId?: string): Promise<any[]> {
     try {
         // Check if professor is logged in
@@ -107,7 +98,6 @@ export async function getProfessorDoubts(courseId?: string): Promise<any[]> {
             }
         }
 
-        // Fallback to direct Firestore for students
         let q;
 
         if (courseId) {
@@ -146,9 +136,7 @@ export async function getProfessorDoubts(courseId?: string): Promise<any[]> {
     }
 }
 
-/**
- * Get confusion insights (topics with most doubts)
- */
+
 export async function getConfusionInsights(courseId: string): Promise<any[]> {
     try {
         // Check if professor is logged in

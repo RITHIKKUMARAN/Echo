@@ -198,6 +198,14 @@ export function subscribeToRegistrationCount(
     callback: (count: number) => void
 ): () => void {
     try {
+        // Skip Firestore listener for professors (they use custom auth)
+        const professorSession = localStorage.getItem('professorSession');
+        if (professorSession) {
+            // Return a no-op for professors - they don't need registration counts displayed
+            callback(0);
+            return () => { };
+        }
+
         const q = query(
             collection(db, 'sessionRegistrations'),
             where('sessionId', '==', sessionId)
