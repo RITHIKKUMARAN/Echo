@@ -937,8 +937,10 @@ app.post('/echo-1928rn/us-central1/api/auth/professor-login', (req, res) => {
  */
 function verifyProfessorAccess(req, res, next) {
     const authHeader = req.headers.authorization;
+    console.log('🔍 Professor access check:', authHeader);
 
     if (!authHeader || !authHeader.startsWith('Professor ')) {
+        console.log('❌ Professor access denied - invalid header');
         return res.status(403).json({
             error: 'Access denied',
             message: 'Professor authentication required'
@@ -947,14 +949,131 @@ function verifyProfessorAccess(req, res, next) {
 
     // In production, verify JWT token here
     // For MVP, we're using a simple prefix check
-
-    req.professorAuth = {
-        role: 'professor',
-        email: PROFESSOR_CREDENTIALS.email
-    };
-
+    console.log('✅ Professor access granted');
     next();
 }
+
+/**
+ * Get professor doubts (escalated doubts)
+ */
+app.get('/echo-1928rn/us-central1/api/professor/doubts/:courseId', verifyProfessorAccess, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        console.log('📚 Fetching professor doubts for course:', courseId);
+
+        const doubtsSnapshot = await db.collection('doubts')
+            .where('escalationLevel', '==', 'PROFESSOR')
+            .where('courseId', '==', courseId)
+            .get();
+
+        const doubts = doubtsSnapshot.docs.map(doc => ({
+            doubtId: doc.id,
+            ...doc.data()
+        }));
+
+        doubts.sort((a, b) => {
+            const timeA = a.escalatedAt?._seconds || 0;
+            const timeB = b.escalatedAt?._seconds || 0;
+            return timeA - timeB;
+        });
+
+        console.log(`✅ Found ${doubts.length} escalated doubts`);
+        res.json({ doubts });
+    } catch (error) {
+        console.error('Error fetching professor doubts:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Get confusion insights
+ */
+app.get('/echo-1928rn/us-central1/api/professor/insights/:courseId', verifyProfessorAccess, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+
+        const doubtsSnapshot = await db.collection('doubts')
+            .where('courseId', '==', courseId)
+            .get();
+
+        const topicCounts = {};
+
+        doubtsSnapshot.docs.forEach(doc => {
+            const doubt = doc.data();
+            // Improved fallback logic matching frontend
+            const topic = doubt.topic || doubt.content?.substring(0, 50) || 'General';
+            topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+        });
+
+        const insights = Object.entries(topicCounts)
+            .map(([topic, count]) => ({ topic, count }))
+            .sort((a, b) => b.count - a.count);
+
+        res.json({ insights });
+    } catch (error) {
+        console.error('Error getting insights:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Get peers/users for Professor View
+ */
+app.get('/echo-1928rn/us-central1/api/professor/peers', verifyProfessorAccess, async (req, res) => {
+    try {
+        const usersSnapshot = await db.collection('users').get();
+        const users = usersSnapshot.docs.map(doc => ({
+            uid: doc.id,
+            ...doc.data()
+        }));
+
+        res.json({ users });
+    } catch (error) {
+        console.error('Error fetching peers:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Get connections for Professor View
+ */
+app.get('/echo-1928rn/us-central1/api/professor/connections', verifyProfessorAccess, async (req, res) => {
+    try {
+        const connectionsSnapshot = await db.collection('connections').get();
+        const connections = connectionsSnapshot.docs.map(doc => ({
+            connectionId: doc.id,
+            ...doc.data()
+        }));
+
+        res.json({ connections });
+    } catch (error) {
+        console.error('Error fetching connections:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Get teaching sessions
+ */
+app.get('/echo-1928rn/us-central1/api/professor/sessions/:courseId', verifyProfessorAccess, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+
+        const sessionsSnapshot = await db.collection('teachingSessions')
+            .where('courseId', '==', courseId)
+            .get();
+
+        const sessions = sessionsSnapshot.docs.map(doc => ({
+            sessionId: doc.id,
+            ...doc.data()
+        }));
+
+        res.json({ sessions });
+    } catch (error) {
+        console.error('Error fetching sessions:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // ============================================
 // GOOGLE SHEETS API - LIVE ACADEMIC INTELLIGENCE

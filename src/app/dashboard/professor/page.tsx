@@ -176,16 +176,40 @@ export default function ProfessorDashboard() {
 
     const loadStudentSessions = async (courseId: string) => {
         try {
-            // Using the existing firestoreService to get sessions
-            const allSessions = await firestoreService.getSessions();
+            // Check if professor is logged in
+            const professorSession = localStorage.getItem('professorSession');
+            if (professorSession) {
+                try {
+                    const session = JSON.parse(professorSession);
+                    const response = await fetch(`http://localhost:5001/echo-1928rn/us-central1/api/professor/sessions/${courseId}`, {
+                        headers: {
+                            'Authorization': `Professor ${session.uid}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
 
-            // Filter by course and only show upcoming/ongoing
+                    if (response.ok) {
+                        const data = await response.json();
+                        return (data.sessions || []).filter((s: any) =>
+                            s.status === 'UPCOMING' || s.status === 'ONGOING'
+                        );
+                    }
+                    console.warn('Sessions API failed, returning empty array');
+                    return [];
+                } catch (apiError) {
+                    console.warn('Professor sessions API call failed:', apiError);
+                    return [];
+                }
+            }
+
+            // Fallback to direct Firestore for students
+            const allSessions = await firestoreService.getSessions();
             return allSessions.filter((s: any) =>
                 s.courseId === courseId &&
                 (s.status === 'UPCOMING' || s.status === 'ONGOING')
             );
         } catch (error) {
-            console.error('Error loading sessions:', error);
+            console.error('❌ Error fetching sessions:', error);
             return [];
         }
     };

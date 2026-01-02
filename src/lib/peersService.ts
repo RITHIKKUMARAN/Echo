@@ -63,18 +63,43 @@ export async function createUserProfile(profileData: Partial<UserProfile>): Prom
     }
 }
 
-// Get all users (for peer discovery)
+// Get all users for discovery
 export async function getAllUsers(): Promise<UserProfile[]> {
     try {
-        const snapshot = await getDocs(collection(db, 'users'));
-        const users = snapshot.docs.map(doc => {
+        // Check if professor is logged in
+        const professorSession = localStorage.getItem('professorSession');
+        if (professorSession) {
+            try {
+                const session = JSON.parse(professorSession);
+                const response = await fetch('http://localhost:5001/echo-1928rn/us-central1/api/professor/peers', {
+                    headers: {
+                        'Authorization': `Professor ${session.uid}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Fetched', data.users.length, 'users from Professor API');
+                    return data.users || [];
+                }
+            } catch (error) {
+                console.warn('Professor peers API failed, checking local fallback', error);
+            }
+        }
+
+        const q = query(collection(db, 'users'));
+        const snapshot = await getDocs(q);
+
+        const users: UserProfile[] = [];
+        snapshot.forEach((doc) => {
             const data = doc.data();
-            return {
+            users.push({
                 ...data,
                 lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate().toISOString() : new Date().toISOString(),
                 createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
-            };
-        }) as UserProfile[];
+            } as UserProfile);
+        });
 
         console.log('✅ Fetched', users.length, 'users from Firestore');
         return users;
@@ -129,6 +154,32 @@ export async function sendConnectionRequest(fromUserId: string, toUserId: string
 // Get user's connections
 export async function getUserConnections(userId: string): Promise<Connection[]> {
     try {
+        // Check if professor is logged in
+        const professorSession = localStorage.getItem('professorSession');
+        if (professorSession) {
+            try {
+                const session = JSON.parse(professorSession);
+                // Only use API if the requested userId matches the professor's ID (or we want all connections)
+                if (session.uid === userId) {
+                    const response = await fetch('http://localhost:5001/echo-1928rn/us-central1/api/professor/connections', {
+                        headers: {
+                            'Authorization': `Professor ${session.uid}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Filter for this user in memory since API returns all (simplified for prototype)
+                        const allConnections = data.connections || [];
+                        return allConnections.filter((c: any) => c.fromUserId === userId || c.toUserId === userId);
+                    }
+                }
+            } catch (error) {
+                console.warn('Professor connections API failed, checking local fallback', error);
+            }
+        }
+
         const sentQuery = query(
             collection(db, 'connections'),
             where('fromUserId', '==', userId)

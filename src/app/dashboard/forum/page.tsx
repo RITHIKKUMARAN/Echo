@@ -23,7 +23,7 @@ interface Reply {
 interface Doubt {
     doubtId: string;
     content: string;
-    status: 'AI' | 'OPEN' | 'SENIOR_VISIBLE' | 'PROFESSOR' | 'RESOLVED';
+    status: 'AI' | 'OPEN' | 'SENIOR_VISIBLE' | 'PROFESSOR' | 'PROFESSOR_VISIBLE' | 'RESOLVED';
     resolved: boolean;
     aiAnswer?: string;
     replies: Reply[];
@@ -200,7 +200,8 @@ export default function ForumPage() {
             case 'AI': return { color: 'bg-purple-100 text-purple-700 border-purple-200', text: 'AI Analyzing', icon: HelpCircle };
             case 'OPEN': return { color: 'bg-green-100 text-green-700 border-green-200', text: 'Open to Class', icon: User };
             case 'SENIOR_VISIBLE': return { color: 'bg-orange-100 text-orange-700 border-orange-200', text: 'Escalated to Seniors', icon: Shield };
-            case 'PROFESSOR': return { color: 'bg-red-100 text-red-700 border-red-200', text: 'Professor Attention', icon: GraduationCap };
+            case 'PROFESSOR':
+            case 'PROFESSOR_VISIBLE': return { color: 'bg-red-100 text-red-700 border-red-200', text: 'Professor Attention', icon: GraduationCap };
             case 'RESOLVED': return { color: 'bg-blue-100 text-blue-700 border-blue-200', text: 'Resolved', icon: CheckCircle };
             default: return { color: 'bg-slate-100', text: status, icon: HelpCircle };
         }

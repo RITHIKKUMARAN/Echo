@@ -126,18 +126,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 // Store session in localStorage
                 localStorage.setItem('professorSession', JSON.stringify(session));
 
-                // Sync professor profile to Firestore
+                // WARNING: Professors cannot write to Firestore from client-side due to rules
+                // Syncing is handled by server-side logic if needed, or skipped
+                /*
                 try {
                     await peersService.createUserProfile({
                         userId: session.uid,
                         displayName: session.name,
                         email: session.email,
                         photoURL: null,
-                        role: 'professor' // Mark as professor
+                        role: 'professor'
                     });
                 } catch (e) {
                     console.error("Error syncing professor profile:", e);
                 }
+                */
 
                 console.log('✅ Professor login successful');
                 return { success: true };

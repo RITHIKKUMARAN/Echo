@@ -15,7 +15,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
 export default function Dashboard() {
-    const { token, user } = useAuth();
+    const { token, user, isProfessor } = useAuth();
     const router = useRouter();
     const [recentSessions, setRecentSessions] = useState<any[]>([]);
     const [recentDoubts, setRecentDoubts] = useState<any[]>([]);
@@ -30,6 +30,13 @@ export default function Dashboard() {
         studyHours: 0,
         activePeers: 0
     });
+
+    // Redirect professors to their dashboard
+    useEffect(() => {
+        if (isProfessor) {
+            router.push('/dashboard/professor');
+        }
+    }, [isProfessor, router]);
 
     // Real-time sessions listener (synced with Sessions page)
     useEffect(() => {
@@ -368,7 +375,7 @@ export default function Dashboard() {
                                                 {doubt.courseId || 'General'}
                                             </span>
                                             <span className={`text-[10px] px-2 py-1 rounded ${doubt.resolved ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
-                                                {doubt.status}
+                                                {doubt.status === 'PROFESSOR_VISIBLE' || doubt.status === 'PROFESSOR' ? 'Professor Attention' : doubt.status.replace('_', ' ')}
                                             </span>
                                         </div>
                                         <h4 className="text-slate-800 font-bold group-hover:text-blue-600 transition-colors line-clamp-2 h-10">

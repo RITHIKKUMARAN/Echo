@@ -83,18 +83,43 @@ export async function checkAndEscalateDoubts(): Promise<number> {
  */
 export async function getProfessorDoubts(courseId?: string): Promise<any[]> {
     try {
+        // Check if professor is logged in
+        const professorSession = localStorage.getItem('professorSession');
+        if (professorSession && courseId) {
+            try {
+                const session = JSON.parse(professorSession);
+                const response = await fetch(`http://localhost:5001/echo-1928rn/us-central1/api/professor/doubts/${courseId}`, {
+                    headers: {
+                        'Authorization': `Professor ${session.uid}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.doubts || [];
+                }
+                console.warn('API endpoint failed, falling back to empty array');
+                return [];
+            } catch (apiError) {
+                console.warn('Professor API call failed:', apiError);
+                return [];
+            }
+        }
+
+        // Fallback to direct Firestore for students
         let q;
 
         if (courseId) {
             q = query(
                 collection(db, 'doubts'),
-                where('status', '==', 'PROFESSOR'),
+                where('escalationLevel', '==', 'PROFESSOR'),
                 where('courseId', '==', courseId)
             );
         } else {
             q = query(
                 collection(db, 'doubts'),
-                where('status', '==', 'PROFESSOR')
+                where('escalationLevel', '==', 'PROFESSOR')
             );
         }
 
@@ -108,10 +133,9 @@ export async function getProfessorDoubts(courseId?: string): Promise<any[]> {
             });
         });
 
-        // Sort by escalation time (oldest first - needs attention)
         doubts.sort((a, b) => {
-            const timeA = a.lastEscalatedAt?.toDate ? a.lastEscalatedAt.toDate().getTime() : 0;
-            const timeB = b.lastEscalatedAt?.toDate ? b.lastEscalatedAt.toDate().getTime() : 0;
+            const timeA = a.escalatedAt?.toDate ? a.escalatedAt.toDate().getTime() : (a.escalatedAt?._seconds * 1000 || 0);
+            const timeB = b.escalatedAt?.toDate ? b.escalatedAt.toDate().getTime() : (b.escalatedAt?._seconds * 1000 || 0);
             return timeA - timeB;
         });
 
@@ -127,6 +151,31 @@ export async function getProfessorDoubts(courseId?: string): Promise<any[]> {
  */
 export async function getConfusionInsights(courseId: string): Promise<any[]> {
     try {
+        // Check if professor is logged in
+        const professorSession = localStorage.getItem('professorSession');
+        if (professorSession) {
+            try {
+                const session = JSON.parse(professorSession);
+                const response = await fetch(`http://localhost:5001/echo-1928rn/us-central1/api/professor/insights/${courseId}`, {
+                    headers: {
+                        'Authorization': `Professor ${session.uid}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.insights || [];
+                }
+                console.warn('API endpoint failed, falling back to empty array');
+                return [];
+            } catch (apiError) {
+                console.warn('Professor API call failed:', apiError);
+                return [];
+            }
+        }
+
+        // Fallback to direct Firestore
         const q = query(
             collection(db, 'doubts'),
             where('courseId', '==', courseId)
@@ -137,12 +186,10 @@ export async function getConfusionInsights(courseId: string): Promise<any[]> {
 
         snapshot.forEach((doc) => {
             const doubt = doc.data();
-            // Use extracted topics if available, otherwise use first few words
-            const topic = doubt.extractedTopic || doubt.content.substring(0, 50);
+            const topic = doubt.topic || doubt.content?.substring(0, 50) || 'General';
             topicCounts[topic] = (topicCounts[topic] || 0) + 1;
         });
 
-        // Convert to array and sort
         const insights = Object.entries(topicCounts)
             .map(([topic, count]) => ({ topic, count }))
             .sort((a, b) => b.count - a.count);
