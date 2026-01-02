@@ -32,11 +32,11 @@ export default function Navigation() {
     return (
         <nav className="h-screen w-20 hover:w-64 transition-all duration-500 ease-out group fixed left-0 top-0 z-50 flex flex-col bg-slate-950/80 backdrop-blur-xl border-r border-white/10">
             {/* Logo / Brand */}
-            <div className="h-20 flex items-center justify-center border-b border-white/5">
+            <div className="h-20 flex items-center justify-center border-b border-white/5 relative">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">
                     E
                 </div>
-                <span className="ml-3 font-bold text-xl text-white opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap overflow-hidden translate-x-4 group-hover:translate-x-0">
+                <span className="absolute left-16 font-bold text-xl text-white opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap pointer-events-none">
                     Echo
                 </span>
             </div>
