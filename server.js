@@ -3,10 +3,32 @@ require('dotenv').config({ path: '.env.local' });
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { google } = require('googleapis');
+const admin = require('firebase-admin');
 const multer = require('multer');
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth'); // For DOCX files
+
+// Initialize Firebase Admin (for Firestore access)
+if (!admin.apps.length) {
+    const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || './functions/serviceAccountKey.json';
+    try {
+        if (require('fs').existsSync(serviceAccountPath)) {
+            admin.initializeApp({
+                credential: admin.credential.cert(require(path.resolve(serviceAccountPath)))
+            });
+            console.log('✅ Firebase Admin initialized with service account');
+        } else {
+            admin.initializeApp();
+            console.log('⚠️ Firebase Admin initialized without explicit credentials');
+        }
+    } catch (e) {
+        console.error('Firebase Admin init error:', e.message);
+    }
+}
+
+const db = admin.firestore();
 
 const app = express();
 const PORT = 5001;
@@ -933,6 +955,515 @@ function verifyProfessorAccess(req, res, next) {
 
     next();
 }
+
+// ============================================
+// GOOGLE SHEETS API - LIVE ACADEMIC INTELLIGENCE
+// ============================================
+
+/**
+ * Get authenticated Google API clients (Sheets + Drive)
+ */
+async function getGoogleClients() {
+    const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || './functions/serviceAccountKey.json';
+
+    try {
+        if (require('fs').existsSync(serviceAccountPath)) {
+            const auth = new google.auth.GoogleAuth({
+                keyFile: serviceAccountPath,
+                scopes: [
+                    'https://www.googleapis.com/auth/spreadsheets',
+                    'https://www.googleapis.com/auth/drive' // Full Drive access
+                ],
+            });
+            const authClient = await auth.getClient();
+            return {
+                sheets: google.sheets({ version: 'v4', auth: authClient }),
+                drive: google.drive({ version: 'v3', auth: authClient })
+            };
+        }
+    } catch (error) {
+        console.error('Failed to initialize Google clients:', error.message);
+    }
+    return null;
+}
+
+// Backward compatibility wrapper
+async function getSheetsClient() {
+    const clients = await getGoogleClients();
+    return clients?.sheets || null;
+}
+
+
+const SHARED_FOLDER_ID = '1-TJjH_ORuznAY9gLFg1gcFPUXt6wXG68';
+
+async function createSheetInFolder(sheets, drive, title, sheetTitle, headerValues, folderId) {
+    // 1. Create the spreadsheet using Sheets API (avoids Service Account quota issues)
+    const createResponse = await sheets.spreadsheets.create({
+        resource: {
+            properties: { title },
+            sheets: [{
+                properties: { title: sheetTitle }
+            }]
+        }
+    });
+
+    const spreadsheetId = createResponse.data.spreadsheetId;
+    let spreadsheetUrl = createResponse.data.spreadsheetUrl;
+
+    // 2. If folder is specified, move the file there
+    if (folderId && drive) {
+        try {
+            console.log(`📂 Moving "${title}" to folder ${folderId}...`);
+            // Get current parents to remove them
+            const file = await drive.files.get({
+                fileId: spreadsheetId,
+                fields: 'parents'
+            });
+
+            const previousParents = file.data.parents ? file.data.parents.join(',') : '';
+
+            // Move to new folder
+            await drive.files.update({
+                fileId: spreadsheetId,
+                addParents: folderId,
+                removeParents: previousParents,
+                fields: 'id, parents, webViewLink'
+            });
+
+            // Get updated URL
+            const updatedFile = await drive.files.get({
+                fileId: spreadsheetId,
+                fields: 'webViewLink'
+            });
+            spreadsheetUrl = updatedFile.data.webViewLink;
+
+            console.log(`✅ Successfully moved to shared folder`);
+        } catch (moveError) {
+            console.warn(`⚠️ Could not move to folder (file created successfully):`, moveError.message);
+            // Continue anyway - file is created, just not in the folder
+        }
+    }
+
+    // 3. Add headers using batchUpdate
+    const requests = [
+        {
+            updateCells: {
+                start: { sheetId: 0, rowIndex: 0, columnIndex: 0 },
+                rows: [{
+                    values: headerValues.map(v => ({ userEnteredValue: { stringValue: v } }))
+                }],
+                fields: 'userEnteredValue'
+            }
+        }
+    ];
+
+    await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        resource: { requests }
+    });
+
+    return { spreadsheetId, spreadsheetUrl };
+}
+
+/**
+ * Create Escalated Doubts Sheet
+ */
+async function createEscalatedDoubtsSheet(sheets, drive, courseName, folderId) {
+    const title = `${courseName} – Escalated Doubts`;
+    const headers = ['Doubt ID', 'Course', 'Topic', 'Asked By', 'Escalated At', 'Replies Count', 'Status'];
+    return createSheetInFolder(sheets, drive, title, 'Doubts', headers, folderId);
+}
+
+/**
+ * Create Topic Confusion Analytics Sheet
+ */
+async function createTopicAnalyticsSheet(sheets, drive, courseName, folderId) {
+    const title = `${courseName} – Topic Confusion Analytics`;
+    const headers = ['Topic', 'Total Doubts', 'Escalated Count', 'Last Seen'];
+    return createSheetInFolder(sheets, drive, title, 'Analytics', headers, folderId);
+}
+
+/**
+ * Create Engagement Summary Sheet
+ */
+async function createEngagementSummarySheet(sheets, drive, courseName, folderId) {
+    const title = `${courseName} – Engagement Summary`;
+    const headers = ['Metric', 'Count'];
+    return createSheetInFolder(sheets, drive, title, 'Summary', headers, folderId);
+}
+
+/**
+ * Share sheet with professor (viewer-only)
+ * Non-blocking - sheets work even if sharing fails
+ */
+async function shareSheetWithProfessor(sheets, spreadsheetId, professorEmail) {
+    try {
+        const drive = google.drive({ version: 'v3', auth: sheets._options.auth });
+        await drive.permissions.create({
+            fileId: spreadsheetId,
+            requestBody: {
+                role: 'reader',
+                type: 'user',
+                emailAddress: professorEmail
+            }
+        });
+        console.log(`✅ Shared sheet ${spreadsheetId} with ${professorEmail}`);
+    } catch (error) {
+        console.warn(`⚠️ Could not share sheet (Drive API may not be enabled):`, error.message);
+        console.warn(`   Sheet created successfully but not auto-shared. Professor can access via direct URL.`);
+    }
+}
+
+/**
+ * Initialize all sheets for a course
+ */
+
+// --------------------------------------------
+// CONFIGURATION: MASTER SHEET ID (Pre-created by Professor)
+// --------------------------------------------
+const MASTER_SHEET_ID = '1yBjv9ocNpGul9Fc7o2ywwn0lAf_FTuC52_zJ-OD568Y';
+
+/**
+ * Helper to ensure a tab exists in the master sheet
+ */
+async function ensureTabExists(sheets, title) {
+    try {
+        let metadata = await sheets.spreadsheets.get({ spreadsheetId: MASTER_SHEET_ID });
+        let sheet = metadata.data.sheets.find(s => s.properties.title === title);
+
+        if (!sheet) {
+            console.log(`📑 Creating tab "${title}"...`);
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId: MASTER_SHEET_ID,
+                resource: {
+                    requests: [{ addSheet: { properties: { title } } }]
+                }
+            });
+            // Fetch updated metadata
+            metadata = await sheets.spreadsheets.get({ spreadsheetId: MASTER_SHEET_ID });
+            sheet = metadata.data.sheets.find(s => s.properties.title === title);
+        }
+        return sheet ? sheet.properties.sheetId : 0;
+    } catch (e) {
+        console.error(`⚠️ Error checking/creating tab "${title}":`, e.message);
+        return 0;
+    }
+}
+
+/**
+ * Initialize all sheets for a course (Using MASTER SHEET)
+ */
+app.post('/echo-1928rn/us-central1/api/sheets/initialize', async (req, res) => {
+    try {
+        const { courseId, professorEmail } = req.body;
+        console.log(`🔄 Initializing Master Sheet for ${courseId}...`);
+
+        const clients = await getGoogleClients();
+
+        // Check if sheets already configured
+        const courseRef = db.collection('courses').doc(courseId);
+
+        // Define the sheet configuration using the ONE Master ID
+        const sheetConfig = {
+            escalatedDoubtsSheetId: MASTER_SHEET_ID,
+            escalatedDoubtsUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=0`,
+            topicAnalyticsSheetId: MASTER_SHEET_ID,
+            topicAnalyticsUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=0`,
+            engagementSummarySheetId: MASTER_SHEET_ID,
+            engagementSummaryUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=0`,
+            isDemoMode: false // We are LIVE now!
+        };
+
+        if (clients && clients.sheets) {
+            try {
+                // simple verification that we can access the sheet
+                await clients.sheets.spreadsheets.get({ spreadsheetId: MASTER_SHEET_ID });
+
+                // Create specific tabs for data clarity AND capture their IDs
+                const doubtsId = await ensureTabExists(clients.sheets, 'Escalated Doubts');
+                const topicsId = await ensureTabExists(clients.sheets, 'Topic Analytics');
+                const engagementId = await ensureTabExists(clients.sheets, 'Engagement Summary');
+
+                // Update config with DIRECT LINK URLs
+                const updatedConfig = {
+                    ...sheetConfig,
+                    escalatedDoubtsUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=${doubtsId}`,
+                    topicAnalyticsUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=${topicsId}`,
+                    engagementSummaryUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=${engagementId}`,
+                };
+
+                // Save to Firestore
+                await courseRef.set({ sheets: updatedConfig }, { merge: true });
+
+                console.log(`✅ Master Sheet linked with specific tabs!`);
+                return res.json({ success: true, sheets: updatedConfig });
+
+            } catch (sheetError) {
+                console.error('❌ Master Sheet Access Error:', sheetError.message);
+                console.log('   (Ensure Service Account is Editor on the sheet)');
+            }
+        }
+
+        // Return config anyway so frontend can attempt to use it
+        return res.json({ success: true, sheets: sheetConfig });
+
+    } catch (error) {
+        console.error('Sheet initialization error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+
+/**
+ * Get sheet URLs for a course
+ */
+app.get('/echo-1928rn/us-central1/api/sheets/urls/:courseId', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+
+        const courseDoc = await db.collection('courses').doc(courseId).get();
+        const sheets = courseDoc.data()?.sheets || {};
+
+        // Return URLs directly if they exist
+        const urls = {
+            escalatedDoubtsUrl: sheets.escalatedDoubtsUrl,
+            topicAnalyticsUrl: sheets.topicAnalyticsUrl,
+            engagementSummaryUrl: sheets.engagementSummaryUrl,
+            isDemoMode: sheets.isDemoMode || false
+        };
+
+        res.json(urls);
+    } catch (error) {
+        console.error('Error getting sheet URLs:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Refresh all sheets for a course (sync from Firestore)
+ */
+app.post('/echo-1928rn/us-central1/api/sheets/refresh', async (req, res) => {
+    try {
+        const { courseId } = req.body;
+
+        console.log(`🔄 Force refreshing sheets for course ${courseId}...`);
+
+        // Clear existing sheets data to force re-creation with URLs
+        const courseRef = db.collection('courses').doc(courseId);
+        await courseRef.set({ sheets: {} }, { merge: true });
+
+        console.log(`✅ Cleared old sheet data. Sheets will be re-initialized on next dashboard load.`);
+
+        res.json({ success: true, message: 'Sheet data cleared. Refresh dashboard to re-initialize.' });
+    } catch (error) {
+        console.error('Sheet refresh error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Populate sheets with real Firestore data
+ */
+app.post('/echo-1928rn/us-central1/api/sheets/sync-data', async (req, res) => {
+    try {
+        const { courseId } = req.body;
+
+        console.log(`📊 Syncing data for course ${courseId}...`);
+
+        // 1. Get Course Settings First
+        const courseDoc = await db.collection('courses').doc(courseId).get();
+        const sheetData = courseDoc.data()?.sheets || {};
+        const isDemo = sheetData.isDemoMode;
+
+        // 2. Initialize Sheets Client (only if not in demo)
+        let sheets = null;
+        if (!isDemo) {
+            sheets = await getSheetsClient();
+            if (!sheets) {
+                return res.status(500).json({ error: 'Sheets API not configured' });
+            }
+        }
+
+        if (!sheetData.escalatedDoubtsSheetId && !isDemo) {
+            return res.status(400).json({ error: 'Sheets not initialized yet' });
+        }
+
+        // 1. POPULATE ESCALATED DOUBTS SHEET
+        const doubtsQuery = await db.collection('doubts')
+            .where('courseId', '==', courseId)
+            .where('escalationLevel', '==', 'PROFESSOR')
+            .get();
+
+        const doubtRows = doubtsQuery.docs.map(doc => {
+            const data = doc.data();
+            let escalatedStr = '';
+            try {
+                if (data.escalatedAt && typeof data.escalatedAt.toMillis === 'function') {
+                    escalatedStr = new Date(data.escalatedAt.toMillis()).toLocaleString();
+                } else if (data.escalatedAt) {
+                    escalatedStr = new Date(data.escalatedAt).toLocaleString();
+                }
+            } catch (e) {
+                console.warn('Date parse error', e);
+            }
+
+            return [
+                doc.id,
+                courseId,
+                data.topic || 'General',
+                data.askedBy?.name || 'Unknown',
+                escalatedStr,
+                (data.replies || []).length,
+                data.isResolved ? 'RESOLVED' : 'OPEN'
+            ];
+        });
+
+        if (doubtRows.length > 0) {
+            const rowsWithHeaders = [
+                ['Doubt ID', 'Course', 'Topic', 'Student', 'Escalated At', 'Replies', 'Status'],
+                ...doubtRows
+            ];
+
+            if (sheets && !isDemo) {
+                await sheets.spreadsheets.values.update({
+                    spreadsheetId: sheetData.escalatedDoubtsSheetId,
+                    range: `'Escalated Doubts'!A1`,
+                    valueInputOption: 'RAW',
+                    resource: { values: rowsWithHeaders }
+                });
+                console.log(`✅ Wrote ${doubtRows.length} escalated doubts to Master Sheet`);
+            } else {
+                console.log(`✅ [Demo] Simulated write of ${doubtRows.length} escalated doubts`);
+            }
+        }
+
+        // 2. POPULATE TOPIC CONFUSION ANALYTICS
+        // Aggregate doubts by topic
+        const topicMap = {};
+        const allDoubtsQuery = await db.collection('doubts')
+            .where('courseId', '==', courseId)
+            .get();
+
+        allDoubtsQuery.docs.forEach(doc => {
+            const data = doc.data();
+            const topic = data.topic || 'General';
+            if (!topicMap[topic]) {
+                topicMap[topic] = { total: 0, escalated: 0, lastSeen: null };
+            }
+            topicMap[topic].total++;
+            if (data.escalationLevel === 'PROFESSOR') {
+                topicMap[topic].escalated++;
+            }
+            let timestamp = 0;
+            try {
+                if (data.createdAt && typeof data.createdAt.toMillis === 'function') {
+                    timestamp = data.createdAt.toMillis();
+                } else if (data.createdAt) {
+                    timestamp = new Date(data.createdAt).getTime();
+                } else {
+                    timestamp = Date.now();
+                }
+            } catch (e) { }
+
+            if (!topicMap[topic].lastSeen || timestamp > topicMap[topic].lastSeen) {
+                topicMap[topic].lastSeen = timestamp;
+            }
+        });
+
+        const topicRows = Object.entries(topicMap)
+            .sort((a, b) => b[1].escalated - a[1].escalated) // Sort by escalated count
+            .map(([topic, stats]) => [
+                topic,
+                stats.total,
+                stats.escalated,
+                stats.lastSeen ? new Date(stats.lastSeen).toLocaleDateString() : ''
+            ]);
+
+        if (topicRows.length > 0) {
+            const rowsWithHeaders = [
+                ['Topic', 'Total Doubts', 'Escalated', 'Last Seen'],
+                ...topicRows
+            ];
+
+            if (sheets && !isDemo) {
+                await sheets.spreadsheets.values.update({
+                    spreadsheetId: sheetData.topicAnalyticsSheetId,
+                    range: `'Topic Analytics'!A1`,
+                    valueInputOption: 'RAW',
+                    resource: { values: rowsWithHeaders }
+                });
+                console.log(`✅ Wrote ${topicRows.length} topic analytics to Master Sheet`);
+            } else {
+                console.log(`✅ [Demo] Simulated write of ${topicRows.length} topic analytics`);
+            }
+        }
+
+        // 3. POPULATE ENGAGEMENT SUMMARY
+        const totalDoubts = allDoubtsQuery.docs.length;
+        const resolvedDoubts = allDoubtsQuery.docs.filter(d => d.data().isResolved).length;
+        const aiReplies = allDoubtsQuery.docs.reduce((sum, d) => {
+            return sum + (d.data().replies || []).filter(r => r.isAi).length;
+        }, 0);
+        const peerReplies = allDoubtsQuery.docs.reduce((sum, d) => {
+            return sum + (d.data().replies || []).filter(r => !r.isAi && r.repliedBy?.role !== 'PROFESSOR').length;
+        }, 0);
+        const professorReplies = allDoubtsQuery.docs.reduce((sum, d) => {
+            return sum + (d.data().replies || []).filter(r => r.repliedBy?.role === 'PROFESSOR').length;
+        }, 0);
+
+        const sessionsQuery = await db.collection('teachingSessions')
+            .where('courseId', '==', courseId)
+            .get();
+        const totalSessions = sessionsQuery.docs.length;
+
+        const engagementRows = [
+            ['Total Doubts Asked', totalDoubts],
+            ['Doubts Resolved', resolvedDoubts],
+            ['AI Responses', aiReplies],
+            ['Peer Responses', peerReplies],
+            ['Professor Responses', professorReplies],
+            ['Escalated to Professor', doubtRows.length],
+            ['Teaching Sessions Hosted', totalSessions]
+        ];
+
+        const engagementRowsWithHeader = [
+            ['Metric', 'Value'],
+            ...engagementRows
+        ];
+
+        if (sheets && !isDemo) {
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: sheetData.engagementSummarySheetId,
+                range: `'Engagement Summary'!A1`,
+                valueInputOption: 'RAW',
+                resource: { values: engagementRowsWithHeader }
+            });
+            console.log(`✅ Wrote engagement summary to Master Sheet`);
+        } else {
+            console.log(`✅ [Demo] Simulated write of engagement summary`);
+        }
+
+        res.json({
+            success: true,
+            message: isDemo ? 'Simulated Sync (Demo Mode)' : 'Synced Successfully',
+            stats: {
+                doubtsSynced: doubtRows.length,
+                topicsSynced: topicRows.length,
+                engagementMetrics: engagementRows.length
+            },
+            exportData: {
+                doubts: [['ID', 'Course', 'Topic', 'Student', 'Escalated At', 'Replies', 'Status'], ...doubtRows],
+                topics: [['Topic', 'Total Doubts', 'Escalated', 'Last Seen'], ...topicRows],
+                engagement: [['Metric', 'Value'], ...engagementRows]
+            }
+        });
+
+    } catch (error) {
+        console.error('Sheet sync error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`\n🚀 Echo Platform API Server Running!`);
