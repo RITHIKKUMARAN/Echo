@@ -1184,6 +1184,8 @@ app.post('/echo-1928rn/us-central1/api/sheets/initialize', async (req, res) => {
                 const topicsId = await ensureTabExists(clients.sheets, 'Topic Analytics');
                 const engagementId = await ensureTabExists(clients.sheets, 'Engagement Summary');
 
+                console.log(`📊 Tab IDs Found: Doubts=${doubtsId}, Topics=${topicsId}, Engagement=${engagementId}`);
+
                 // Update config with DIRECT LINK URLs
                 const updatedConfig = {
                     ...sheetConfig,
@@ -1191,6 +1193,8 @@ app.post('/echo-1928rn/us-central1/api/sheets/initialize', async (req, res) => {
                     topicAnalyticsUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=${topicsId}`,
                     engagementSummaryUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit#gid=${engagementId}`,
                 };
+
+                console.log('🔗 Generated URLs:', updatedConfig);
 
                 // Save to Firestore
                 await courseRef.set({ sheets: updatedConfig }, { merge: true });
