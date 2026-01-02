@@ -73,10 +73,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Student authentication (Firebase)
     useEffect(() => {
-        if (isProfessor) return; // Skip Firebase auth if professor is logged in
-
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
+                // Student logged in - clear any professor session
+                if (isProfessor) {
+                    console.log('🔄 Clearing professor session for student login');
+                    setProfessorSession(null);
+                    setIsProfessor(false);
+                    localStorage.removeItem('professorSession');
+                }
+
                 const idToken = await currentUser.getIdToken();
                 setToken(idToken);
                 setUser(currentUser);
