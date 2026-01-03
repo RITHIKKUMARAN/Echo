@@ -9,6 +9,7 @@ import analyticsRoutes from './routes/analyticsRoutes';
 import chatRoutes from './routes/chatRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import authRoutes from './routes/authRoutes';
+import professorRoutes from './routes/professorRoutes';
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Routes
 app.use('/auth', authRoutes);
+app.use('/professor', professorRoutes);
 app.use('/users', userRoutes);
 app.use('/notebook', notebookRoutes);
 app.use('/chats', chatRoutes); // Persistent chat history
