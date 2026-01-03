@@ -1,249 +1,230 @@
-# 🎓 ECHO - Educational Campus AI Platform
+<div align="center">
 
-> Transform your learning experience with AI-powered notebooks, intelligent peer matching, and collaborative study sessions.
+<div align="center">
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/RITHIKKUMARAN/Echo)
-[![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=flat&logo=firebase&logoColor=black)](https://firebase.google.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat&logo=next.js)](https://nextjs.org/)
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=32&duration=2800&pause=2000&color=4285F4&center=true&vCenter=true&width=700&lines=🎓+ECHO+-+AI+Campus+OS;Revolutionizing+Campus+Learning" alt="Title" />
 
-## ✨ Features
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=28&duration=2800&pause=2000&color=10B981&center=true&vCenter=true&width=700&lines=+Learn+◙+Collaborate+◙+Innovate" alt="Subtitle" />
 
-### 🧠 Neural Notebook
-- AI-powered document analysis with Gemini 2.0
-- Upload PDFs, PPTX, DOCX, TXT files
-- Contextual AI chat with your documents
-- Auto-extraction of study topics
+</div>
 
-### 🤝 Peer Connect
-- Smart peer matching based on study topics
-- Real-time chat with connected peers
-- Professor badge system
-- Topic overlap visualization
+<p align="center">
+  <b>A comprehensive University OS bridging the gap between students, professors, and knowledge with Gemini 2.0.</b>
+</p>
 
-### 📚 Study Sessions
-- Schedule and join study sessions
-- Track study history
-- Session analytics
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com)
+[![Gemini 2.0](https://img.shields.io/badge/Gemini-2.0_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](https://github.com/RITHIKKUMARAN/Echo/blob/main/LICENSE)
 
-### 💬 Doubt Forum
-- Ask questions to the community
-- Get AI-powered answer suggestions
-- Upvote/downvote system
+<p align="center">
+  <a href="#-overview">Overview</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-contributing">Contributing</a>
+</p>
 
-## 🚀 Tech Stack
+![GitHub Stars](https://img.shields.io/github/stars/RITHIKKUMARAN/Echo?style=social)
+![GitHub Forks](https://img.shields.io/github/forks/RITHIKKUMARAN/Echo?style=social)
+![GitHub Issues](https://img.shields.io/github/issues/RITHIKKUMARAN/Echo)
+![GitHub Last Commit](https://img.shields.io/github/last-commit/RITHIKKUMARAN/Echo)
 
-- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS v4
-- **Backend**: Firebase Functions (Node.js 20)
-- **Database**: Firebase Firestore
-- **Storage**: Firebase Storage
-- **Authentication**: Firebase Auth
-- **AI**: Google Gemini 2.0
-- **3D Graphics**: Three.js, React Three Fiber
-- **Animations**: Framer Motion, GSAP
+</div>
 
-## 📦 Quick Start (Local Development)
+<div align="center">
 
-### Prerequisites
-- Node.js 20+
-- npm or yarn
-- Firebase project
+<a href="https://echo-rk.vercel.app" target="_blank">
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=600&size=28&duration=3000&pause=1000&color=10B981&background=FFFFFF00&center=true&vCenter=true&repeat=true&width=800&lines=Experience+The+Future+of+Education;Click+to+Explore+the+Platform+Now!" alt="Live Demo" />
+</a>
 
-### Installation
+[![Live Demo](https://img.shields.io/badge/LIVE_DEMO-Launch_App-00D9FF?style=for-the-badge&logo=vercel&logoColor=white&labelColor=10B981)](https://echo-rk.vercel.app)
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/RITHIKKUMARAN/Echo.git
-cd Echo
-```
+</div>
 
-2. **Install dependencies**
-```bash
-npm install
-cd functions
-npm install
-cd ..
-```
+<div align="center">
 
-3. **Configure environment variables**
+# Overview
 
-Create `.env.local` in root:
-```env
-NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_key
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5001/your_project_id/us-central1
-```
+<img src="https://readme-typing-svg.herokuapp.com?font=Poppins&size=26&duration=3000&pause=2000&color=4285F4&center=true&vCenter=true&width=700&lines=The+Intelligent+Ecosystem+for+Modern+Campuses" alt="Overview" />
 
-4. **Run Firebase emulators (optional)**
-```bash
-firebase emulators:start
-```
+**Echo** is a comprehensive, full-stack "University OS" designed to transform how students and professors interact. By leveraging **Google’s Gemini 2.0 API** for neural note-taking and **Firebase** for real-time synchronization, Echo converts fragmented study materials into a unified, actionable learning experience.
 
-5. **Start development server**
-```bash
-npm run dev
-```
 
-Visit `http://localhost:3000`
 
-## 🌐 Production Deployment
+<div align="center">
 
-### 🎯 **100% Free Tier Deployment** (Recommended)
+<a href="https://github.com/RITHIKKUMARAN/Echo" target="_blank">
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=600&size=28&duration=3000&pause=1000&color=10B981&background=FFFFFF00&center=true&vCenter=true&repeat=true&width=800&lines=🚀+Scale+Your+Learning+Today!;Real-Time+Professor+Insights;Deploy+on+Google+Cloud+Now!" alt="Action" />
+</a>
 
-See **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** for complete step-by-step instructions.
+[![Open Project](https://img.shields.io/badge/VIEW_SOURCE-GitHub-00D9FF?style=for-the-badge&logo=github&logoColor=white&labelColor=10B981)](https://github.com/RITHIKKUMARAN/Echo)
 
-**Quick Deploy:**
-
-1. **Deploy Firebase Backend**
-```bash
-firebase login
-firebase deploy --only firestore:rules,storage,functions
-```
-
-2. **Deploy Frontend to Vercel**
-```bash
-npm i -g vercel
-vercel --prod
-```
-
-Or use the **Deploy to Vercel** button above!
-
-## 📊 Free Tier Limits
-
-All services are FREE with generous limits:
-- ✅ Vercel: 100GB bandwidth/month
-- ✅ Firebase Functions: 2M invocations/month
-- ✅ Firestore: 50K reads/day
-- ✅ Firebase Storage: 5GB total
-- ✅ Firebase Auth: 10K users/month
-
-Perfect for **1000+ active users** at zero cost!
-
-## 🔐 Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase Web API Key | ✅ Yes |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase Auth Domain | ✅ Yes |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | ✅ Yes |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase Storage Bucket | ✅ Yes |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase Messaging ID | ✅ Yes |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase App ID | ✅ Yes |
-| `NEXT_PUBLIC_GEMINI_API_KEY` | Google Gemini API Key | ✅ Yes |
-| `NEXT_PUBLIC_API_BASE_URL` | Backend Functions URL | ✅ Yes |
-
-## 🏗️ Project Structure
-
-```
-echo_platform/
-├── src/
-│   ├── app/              # Next.js App Router pages
-│   │   ├── dashboard/    # Protected dashboard routes
-│   │   ├── login/        # Authentication pages
-│   │   └── layout.tsx    # Root layout
-│   ├── components/       # React components
-│   ├── lib/              # Utilities & services
-│   │   ├── firebase.ts   # Firebase config
-│   │   └── sheetsService.ts
-│   └── styles/           # Global styles
-├── functions/            # Firebase Functions (Backend)
-│   ├── src/
-│   │   ├── index.ts      # Main functions export
-│   │   └── services/     # Business logic
-│   └── package.json
-├── public/               # Static assets
-├── vercel.json           # Vercel config
-├── firebase.json         # Firebase config
-└── package.json          # Dependencies
-```
-
-## 🛠️ Development Scripts
-
-```bash
-npm run dev          # Start Next.js dev server
-npm run build        # Build for production
-npm run start        # Start production server
-npm run lint         # Run ESLint
-
-# Firebase Commands
-firebase emulators:start        # Start all emulators
-firebase deploy --only functions # Deploy functions only
-firebase deploy                  # Deploy everything
-```
-
-## 🧪 Testing
-
-```bash
-# Test Firebase Functions locally
-cd functions
-npm run build
-firebase emulators:start --only functions
-
-# Test Frontend
-npm run dev
-# Visit http://localhost:3000
-```
-
-## 🔒 Security
-
-- Firebase Authentication for user management
-- Firestore security rules for data protection
-- Storage rules for file upload restrictions
-- API key restrictions via Google Cloud Console
-- Environment variable protection
-- CORS configuration for API endpoints
-
-See `firestore.rules` and `storage.rules` for security configurations.
-
-## 📈 Performance
-
-- **Lighthouse Score**: 90+ on all metrics
-- **Server-Side Rendering** with Next.js 16
-- **Code Splitting**: Automatic via Next.js
-- **Image Optimization**: Next.js Image component
-- **Caching**: Vercel Edge Network CDN
-- **Lazy Loading**: React Suspense & dynamic imports
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👨‍💻 Developer
-
-**Rithik Kumaran K**
-- GitHub: [@RITHIKKUMARAN](https://github.com/RITHIKKUMARAN)
-- Email: [Contact via GitHub]
-
-## 🙏 Acknowledgments
-
-- Google Gemini AI for intelligent features
-- Firebase for backend infrastructure
-- Vercel for seamless deployment
-- Next.js team for the amazing framework
-- Open source community
-
-## 📞 Support
-
-- **Documentation**: See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
-- **Issues**: [GitHub Issues](https://github.com/RITHIKKUMARAN/Echo/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/RITHIKKUMARAN/Echo/discussions)
+</div>
 
 ---
 
-**Made with ❤️ by Rithik Kumaran K** | **Powered by AI** | **Deployed for FREE**
+## 🏗️ System Architecture
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/RITHIKKUMARAN/Echo)
+<table>
+<tr>
+<td align="center" width="33%">
+
+#### 📱 Frontend Layer
+**Next.js 16 + Tailwind v4** Client-side rendering with real-time state updates and glassmorphic UI components.
+
+</td>
+<td align="center" width="33%">
+
+#### 🧠 Intelligence Layer
+**Gemini 2.0 + Vertex AI** Serverless RAG architecture for processing lecture PDFs, audio, and student queries.
+
+</td>
+<td align="center" width="34%">
+
+#### 💾 Data Layer
+**Firebase + Firestore** Live NoSQL database with automated sync to Google Sheets for academic reporting.
+
+</td>
+</tr>
+</table>
+
+
+
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=16&duration=2500&pause=1000&color=4285F4&center=true&vCenter=true&width=600&lines=Modern+Next.js+Frontend+→+Gemini+AI+Engine+→+Firebase+Storage;Scalable+Architecture+for+the+Modern+University!" alt="Architecture" />
+
+</div>
+
+---
+
+## 🧠 Intelligence Logic
+
+Echo leverages the latest Generative AI SDK to power its **Neural Notebook**. By utilizing a **Retrieval-Augmented Generation (RAG)** flow, the system ensures that AI responses are grounded in actual course materials rather than generic training data.
+
+<pre> <code> 
+Core RAG implementation using Gemini 2.0 Flash
+
+Processes campus materials and extracts actionable academic insights
+  const generateCampusInsights = async (materialId: string) => { 
+        const model = genAI.getGenerativeModel({ 
+        model: "gemini-2.0-flash", generationConfig: { temperature: 0.7 } });
+        const prompt = Analyze this lecture material. 1. Identify &#39;Confusion Spikes&#39; (complex topics) for professors. 
+                       2. Generate 5 targeted study questions for students. 
+                       3. Categorize topics for automated study-group matching.;
+
+const result = await model.generateContent([prompt, ...attachmentData]); return result.response.text(); }; </code> </pre>
+
+<div align="center">
+<div align="center">
+
+## ✨ Features <br>
+### 🔍 Intelligence & Connectivity
+<table width="100%"> <tr> <td align="center" width="50%" style="border-right: 1px solid #30363d;"> <br /> <img src="https://img.shields.io/badge/—_Neural_Note--Taking-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white" /> <br /><br /> <b>Chat with PDFs, PPTs, or Audio</b><br /><br /> <b>Automated Topic Extraction</b><br /><br /> <b>Instant Summary Generation</b> <br /><br /> </td> <td align="center" width="50%"> <br /> <img src="https://img.shields.io/badge/—_Real--Time_Collaboration-10B981?style=for-the-badge&logo=google-cloud&logoColor=white" /> <br /><br /> <b>Peer matching via habit analysis</b><br /><br /> <b>Live doubt resolution forums</b><br /><br /> <b>Seamless file sharing via Drive</b> <br /><br /> </td> </tr> </table>
+
+💡 Tip: Use the Professor Dashboard to spot "Confusion Spikes" early and adjust your lecture plan in real-time!
+
+### 📊 Comprehensive Tech Stack
+<table width="100%"> <tr> <td align="left" width="50%" style="padding: 20px; border: 1px solid #30363d; border-radius: 10px 0 0 10px;"> <img src="https://img.shields.io/badge/Frontend_Core-000?style=for-the-badge&logo=react" /><br /><br /> <b>Next.js 16</b> — <i>App Router architecture</i><br /> <b>React 19</b> — <i>Latest UI primitives</i><br /> <b>Tailwind v4</b> — <i>High-performance styling</i><br /> <b>Framer Motion</b> — <i>Fluid micro-interactions</i> </td> <td align="left" width="50%" style="padding: 20px; border: 1px solid #30363d; border-radius: 0 10px 10px 0;"> <img src="https://img.shields.io/badge/Backend_%26_AI-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white" /><br /><br /> <b>Gemini 2.0</b> — <i>Core LLM for RAG & analysis</i><br /> <b>Firebase</b> — <i>Auth, Firestore, & Functions</i><br /> <b>Google APIs</b> — <i>Sheets & Drive automation</i><br /> <b>Vertex AI</b> — <i>Enterprise model management</i> </td> </tr> </table>
+
+</div>
+</div>
+
+</div>
+
+## 📦 Installation <br>
+Follow these steps to get your local development environment running:
+
+<br />
+
+1. Clone the repository <br /> <code>git clone https://github.com/RITHIKKUMARAN/Echo.git</code> <br /> <code>cd Echo</code>
+
+2. Install dependencies <br /> <code># Install frontend core</code> <br /> <code>npm install</code> <br /><br /> <code># Install backend functions</code> <br /> <code>cd functions && npm install</code>
+
+⚙️ Environment Configuration<br>
+Create a .env.local file in the root directory and add your credentials:
+
+<code># Firebase Configuration</code> <br /> <code>NEXT_PUBLIC_FIREBASE_API_KEY=your_key</code> <br /><br /> <code># Google AI Configuration</code> <br /> <code>NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_key</code>
+
+🏃 Running the Application
+Open two terminal windows to run the full-stack environment:
+
+🌐 Frontend (Next.js) — Starts at http://localhost:3000 <br /> <code>npm run dev</code>
+
+🔥 Backend (Firebase) — Starts local cloud functions <br /> <code>firebase emulators:start</code>
+<br>
+
+## 🤝 Contributing
+
+I welcome contributions to the Echo ecosystem! Follow this workflow to contribute:
+
+**1. Fork the Project**<br>
+**2. Create your Feature Branch**
+<code>git checkout -b feature/AmazingFeature</code>
+<br>**3. Commit your Changes**
+<code>git commit -m 'Add AmazingFeature'</code>
+<br>**4. Push to the Branch**
+<code>git push origin feature/AmazingFeature</code>
+<br>**5. Open a Pull Request**
+
+
+## 📜 License
+
+Distributed under the **MIT License**. See the [LICENSE](https://github.com/RITHIKKUMARAN/Echo/blob/main/LICENSE) file for more information.
+
+
+<div align="center">
+
+## 👥 Author
+
+<table width="100%">
+  <tr>
+    <td align="center" width="100%">
+      <br />
+      <a href="https://github.com/RITHIKKUMARAN">
+        <img src="https://avatars.githubusercontent.com/RITHIKKUMARAN?v=4" width="120px" style="border-radius: 50%; border: 3px solid #4285F4;" alt="Rithik Kumaran K"/>
+        <br /><br />
+        <img src="https://img.shields.io/badge/Developer-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white" alt="Developer" />
+        <br />
+        <b style="display: block; margin-top: 12px; font-size: 1.2em;">Rithik Kumaran K</b>
+      </a>
+      <br />
+      <a href="mailto:rithikkumarank@gmail.com">
+        <img src="https://img.shields.io/badge/Email-Contact_Me-EA4335?style=social&logo=gmail" alt="Email"/>
+      </a>
+      <br /><br />
+      <p><i>Built with passion by Rithik Kumaran K</i></p>
+    </td>
+  </tr>
+</table>
+
+
+## 📞 Support
+
+<table width="100%">
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/RITHIKKUMARAN/Echo/issues">
+        <img src="https://img.shields.io/badge/Issues-Report_Bug-red?style=for-the-badge&logo=github" alt="Issues"/>
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/RITHIKKUMARAN/Echo">
+        <img src="https://img.shields.io/badge/GitHub-Star_Repo-yellow?style=for-the-badge&logo=github" alt="Star"/>
+      </a>
+    </td>
+  </tr>
+</table>
+
+<br />
+
+### 💖 Show your support
+
+**Give a ⭐️ if this project helped you!**
+
+<br />
+
+<img src="https://img.shields.io/github/repo-size/RITHIKKUMARAN/Echo?color=4285F4&style=flat-square" alt="Repo Size" />
+<img src="https://img.shields.io/github/contributors/RITHIKKUMARAN/Echo?color=10B981&style=flat-square" alt="Contributors" />
+
+</div>
