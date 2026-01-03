@@ -97,17 +97,11 @@ router.get('/insights/:courseId', validateProfessor, async (req, res) => {
                 hasTags = true;
             }
 
-            // Fallback: simple keyword extraction if no tags
+            // Fallback: Use the doubt content itself as the topic if tags are missing
             if (!hasTags && data.content) {
-                const words = data.content.toLowerCase().split(/\s+/);
-                const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from', 'by', 'i', 'my', 'you', 'your', 'it', 'this', 'that', 'how', 'what', 'why', 'when', 'can', 'could', 'would', 'should', 'help', 'please', 'doubt', 'question', 'sir', 'mam', 'professor', 'unable', 'understand', 'explain']);
-
-                words.forEach((word: string) => {
-                    const cleanWord = word.replace(/[^a-z0-9]/g, '');
-                    if (cleanWord.length > 3 && !stopWords.has(cleanWord)) {
-                        topicCounts[cleanWord] = (topicCounts[cleanWord] || 0) + 1;
-                    }
-                });
+                // Use the first 7 words for a meaningful phrase
+                const contentPreview = data.content.split(/\s+/).slice(0, 7).join(' ') + (data.content.length > 50 ? '...' : '');
+                topicCounts[contentPreview] = (topicCounts[contentPreview] || 0) + 1;
             }
         });
 
@@ -131,7 +125,7 @@ router.get('/sessions/:courseId', validateProfessor, async (req, res) => {
         const db = admin.firestore();
 
         const sessionsSnapshot = await db.collection('sessions')
-            .where('courseId', '==', courseId)
+            .where('courseId', 'in', [courseId, 'general', 'General', 'CS101']) // Broader filter to catch all sessions
             .get();
 
         const sessions = sessionsSnapshot.docs.map(doc => ({

@@ -63,7 +63,7 @@ export async function getCourseSheetUrls(courseId: string): Promise<{
     engagementSummaryUrl?: string;
 }> {
     try {
-        const response = await fetch(`${API_BASE_URL}/sheets/urls/${courseId}`);
+        const response = await fetch(`${API_BASE_URL}/sheets/course/${courseId}`);
 
         if (!response.ok) {
             throw new Error('Failed to get sheet URLs');
@@ -81,10 +81,9 @@ export async function getCourseSheetUrls(courseId: string): Promise<{
  */
 export async function refreshCourseSheets(courseId: string): Promise<void> {
     try {
-        await fetch(`${API_BASE_URL}/sheets/refresh`, {
+        await fetch(`${API_BASE_URL}/sheets/refresh/${courseId}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ courseId })
+            headers: { 'Content-Type': 'application/json' }
         });
     } catch (error) {
         console.error('Error refreshing sheets:', error);
@@ -97,10 +96,9 @@ export async function refreshCourseSheets(courseId: string): Promise<void> {
  */
 export async function syncDataToSheets(courseId: string): Promise<any> {
     try {
-        const response = await fetch(`${API_BASE_URL}/sheets/sync-data`, {
+        const response = await fetch(`${API_BASE_URL}/sheets/sync/${courseId}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ courseId })
+            headers: { 'Content-Type': 'application/json' }
         });
 
         if (!response.ok) {
