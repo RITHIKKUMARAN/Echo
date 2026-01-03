@@ -88,9 +88,25 @@ router.get('/insights/:courseId', validateProfessor, async (req, res) => {
         const topicCounts: { [key: string]: number } = {};
         doubtsSnapshot.docs.forEach(doc => {
             const data = doc.data();
-            if (data.tags && Array.isArray(data.tags)) {
+            let hasTags = false;
+
+            if (data.tags && Array.isArray(data.tags) && data.tags.length > 0) {
                 data.tags.forEach((tag: string) => {
                     topicCounts[tag] = (topicCounts[tag] || 0) + 1;
+                });
+                hasTags = true;
+            }
+
+            // Fallback: simple keyword extraction if no tags
+            if (!hasTags && data.content) {
+                const words = data.content.toLowerCase().split(/\s+/);
+                const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from', 'by', 'i', 'my', 'you', 'your', 'it', 'this', 'that', 'how', 'what', 'why', 'when', 'can', 'could', 'would', 'should', 'help', 'please', 'doubt', 'question', 'sir', 'mam', 'professor', 'unable', 'understand', 'explain']);
+
+                words.forEach((word: string) => {
+                    const cleanWord = word.replace(/[^a-z0-9]/g, '');
+                    if (cleanWord.length > 3 && !stopWords.has(cleanWord)) {
+                        topicCounts[cleanWord] = (topicCounts[cleanWord] || 0) + 1;
+                    }
                 });
             }
         });
@@ -114,7 +130,7 @@ router.get('/sessions/:courseId', validateProfessor, async (req, res) => {
         const { courseId } = req.params;
         const db = admin.firestore();
 
-        const sessionsSnapshot = await db.collection('teachingSessions')
+        const sessionsSnapshot = await db.collection('sessions')
             .where('courseId', '==', courseId)
             .get();
 
