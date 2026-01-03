@@ -105,7 +105,7 @@ export default function ChatModal({ isOpen, onClose, connectionId, currentUserId
                                 </div>
                             </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-slate-100">
+                        <Button variant="ghost" onClick={onClose} className="rounded-full hover:bg-slate-100 w-10 h-10 p-0">
                             <X className="w-5 h-5 text-slate-500" />
                         </Button>
                     </div>
@@ -123,8 +123,8 @@ export default function ChatModal({ isOpen, onClose, connectionId, currentUserId
                                 <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                     <div
                                         className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm ${isMe
-                                                ? 'bg-blue-600 text-white rounded-br-none'
-                                                : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-bl-none'
+                                            ? 'bg-blue-600 text-white rounded-br-none'
+                                            : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-bl-none'
                                             }`}
                                     >
                                         {msg.text}

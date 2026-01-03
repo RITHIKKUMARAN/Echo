@@ -429,17 +429,17 @@ export async function getSessions(filters?: {
             return {
                 sessionId: doc.id,
                 title: data.title || 'Untitled Session',
-                tutor: {
-                    name: data.tutorName || 'Instructor',
-                    email: data.tutorUid || 'anonymous'
-                },
+                description: data.description || '',
+                tutorName: data.tutorName || 'Instructor',
+                tutorUid: data.tutorUid || 'anonymous',
                 scheduledAt: data.scheduledAt?.toDate ? data.scheduledAt.toDate().toISOString() : new Date().toISOString(),
                 duration: data.duration || 60,
                 meetLink: data.meetLink || '',
                 courseId: data.courseId || 'general',
-                attendees: data.participants?.length || 0,
+                participants: data.participants || [],
                 createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-                status: data.status || 'scheduled'
+                status: data.status || 'scheduled',
+                tags: data.tags || []
             };
         }) as Session[];
 

@@ -187,7 +187,7 @@ export function subscribeToSessions(
                         }));
 
                         // Client-side sorting
-                        sessions.sort((a, b) => {
+                        sessions.sort((a: any, b: any) => {
                             const timeA = new Date(a.scheduledStartTime).getTime();
                             const timeB = new Date(b.scheduledStartTime).getTime();
                             return timeA - timeB;
@@ -242,7 +242,7 @@ export function subscribeToSessions(
             });
 
             // Client-side sorting (no Firestore index needed)
-            sessions.sort((a, b) => {
+            sessions.sort((a: TeachingSession, b: TeachingSession) => {
                 const timeA = new Date(a.scheduledStartTime).getTime();
                 const timeB = new Date(b.scheduledStartTime).getTime();
                 return timeA - timeB;
