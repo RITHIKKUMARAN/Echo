@@ -4,7 +4,7 @@ import * as admin from 'firebase-admin';
 const router = Router();
 
 // Middleware to validate professor authorization
-const validateProfessor = (req: any, res: any, next: any) => {
+const validateProfessor = (req: any, res: any, next: any): any => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Professor ')) {
         return res.status(401).json({ error: 'Unauthorized' });
@@ -127,6 +127,55 @@ router.get('/sessions/:courseId', validateProfessor, async (req, res) => {
     } catch (error) {
         console.error('Error fetching sessions:', error);
         res.status(500).json({ error: 'Failed to fetch sessions' });
+    }
+});
+
+// Reply to a doubt (professor)
+router.post('/doubts/:doubtId/reply', validateProfessor, async (req, res) => {
+    try {
+        const { doubtId } = req.params;
+        const { content, professorName, professorUid } = req.body;
+        const db = admin.firestore();
+
+        if (!content) {
+            return res.status(400).json({ error: 'Reply content is required' });
+        }
+
+        // Add reply to the doubt
+        const doubtRef = db.collection('doubts').doc(doubtId);
+        const doubtDoc = await doubtRef.get();
+
+        if (!doubtDoc.exists) {
+            return res.status(404).json({ error: 'Doubt not found' });
+        }
+
+        const existingReplies = doubtDoc.data()?.replies || [];
+        const newReply = {
+            content,
+            repliedBy: {
+                name: professorName || 'Professor',
+                uid: professorUid || (req as any).professorUid,
+                role: 'PROFESSOR'
+            },
+            repliedAt: admin.firestore.FieldValue.serverTimestamp(),
+            isAi: false,
+            isAccepted: true
+        };
+
+        // Update doubt with new reply and mark as resolved
+        await doubtRef.update({
+            replies: [...existingReplies, newReply],
+            status: 'RESOLVED',
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        res.json({
+            success: true,
+            message: 'Reply sent and doubt resolved'
+        });
+    } catch (error) {
+        console.error('Error replying to doubt:', error);
+        res.status(500).json({ error: 'Failed to send reply' });
     }
 });
 

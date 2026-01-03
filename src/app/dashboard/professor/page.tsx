@@ -224,20 +224,24 @@ export default function ProfessorDashboard() {
         setReplying(true);
 
         try {
-            // Add professor reply
-            await firestoreService.addReplyToDoubt(doubt.doubtId, {
-                content: replyContent,
-                repliedBy: {
-                    name: professorSession?.name || 'Professor',
-                    uid: professorSession?.uid || 'professor_001',
-                    role: 'PROFESSOR'
+            // Call professor API to reply (avoids Firestore permission issues)
+            const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api';
+            const response = await fetch(`${apiBaseUrl}/professor/doubts/${doubt.doubtId}/reply`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Professor ${professorSession?.uid}`,
+                    'Content-Type': 'application/json'
                 },
-                isAi: false,
-                isAccepted: true // Professor answers are auto-accepted
+                body: JSON.stringify({
+                    content: replyContent,
+                    professorName: professorSession?.name || 'Professor',
+                    professorUid: professorSession?.uid || 'professor_001'
+                })
             });
 
-            // Mark doubt as resolved
-            await firestoreService.resolveDoubt(doubt.doubtId);
+            if (!response.ok) {
+                throw new Error('Failed to send reply');
+            }
 
             // Reload data
             await loadDashboardData();
