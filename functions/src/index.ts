@@ -8,6 +8,7 @@ import sessionRoutes from './routes/sessionRoutes';
 import analyticsRoutes from './routes/analyticsRoutes';
 import chatRoutes from './routes/chatRoutes';
 import uploadRoutes from './routes/uploadRoutes';
+import authRoutes from './routes/authRoutes';
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Routes
+app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/notebook', notebookRoutes);
 app.use('/chats', chatRoutes); // Persistent chat history
