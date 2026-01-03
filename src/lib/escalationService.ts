@@ -79,7 +79,8 @@ export async function getProfessorDoubts(courseId?: string): Promise<any[]> {
         if (professorSession && courseId) {
             try {
                 const session = JSON.parse(professorSession);
-                const response = await fetch(`http://localhost:5001/echo-1928rn/us-central1/api/professor/doubts/${courseId}`, {
+                const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api';
+                const response = await fetch(`${apiBaseUrl}/professor/doubts/${courseId}`, {
                     headers: {
                         'Authorization': `Professor ${session.uid}`,
                         'Content-Type': 'application/json'
@@ -144,7 +145,8 @@ export async function getConfusionInsights(courseId: string): Promise<any[]> {
         if (professorSession) {
             try {
                 const session = JSON.parse(professorSession);
-                const response = await fetch(`http://localhost:5001/echo-1928rn/us-central1/api/professor/insights/${courseId}`, {
+                const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api';
+                const response = await fetch(`${apiBaseUrl}/professor/insights/${courseId}`, {
                     headers: {
                         'Authorization': `Professor ${session.uid}`,
                         'Content-Type': 'application/json'

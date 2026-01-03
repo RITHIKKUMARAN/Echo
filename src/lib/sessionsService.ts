@@ -162,7 +162,8 @@ export function subscribeToSessions(
             const fetchSessions = async () => {
                 try {
                     const session = JSON.parse(professorSession);
-                    const response = await fetch(`http://localhost:5001/echo-1928rn/us-central1/api/professor/sessions/${courseId}`, {
+                    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api';
+                    const response = await fetch(`${apiBaseUrl}/professor/sessions/${courseId}`, {
                         headers: {
                             'Authorization': `Professor ${session.uid}`,
                             'Content-Type': 'application/json'

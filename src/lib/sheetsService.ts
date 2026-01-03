@@ -1,7 +1,7 @@
 // Google Sheets Service - Live Academic Intelligence Layer
 // Sheets = Read-only derived view of Firestore data
 
-const API_BASE_URL = 'http://localhost:5001/echo-1928rn/us-central1/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api';
 
 export interface CourseSheets {
     escalatedDoubtsSheetId?: string;

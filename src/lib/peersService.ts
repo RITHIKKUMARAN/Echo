@@ -71,7 +71,8 @@ export async function getAllUsers(): Promise<UserProfile[]> {
         if (professorSession) {
             try {
                 const session = JSON.parse(professorSession);
-                const response = await fetch('http://localhost:5001/echo-1928rn/us-central1/api/professor/peers', {
+                const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api';
+                const response = await fetch(`${apiBaseUrl}/professor/peers`, {
                     headers: {
                         'Authorization': `Professor ${session.uid}`,
                         'Content-Type': 'application/json'
@@ -161,7 +162,8 @@ export async function getUserConnections(userId: string): Promise<Connection[]> 
                 const session = JSON.parse(professorSession);
                 // Only use API if the requested userId matches the professor's ID (or we want all connections)
                 if (session.uid === userId) {
-                    const response = await fetch('http://localhost:5001/echo-1928rn/us-central1/api/professor/connections', {
+                    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api';
+                    const response = await fetch(`${apiBaseUrl}/professor/connections`, {
                         headers: {
                             'Authorization': `Professor ${session.uid}`,
                             'Content-Type': 'application/json'
