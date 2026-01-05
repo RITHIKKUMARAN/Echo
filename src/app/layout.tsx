@@ -3,6 +3,7 @@ import { Outfit } from 'next/font/google';
 import './globals.css';
 import ThreeScene from '@/components/ThreeScene';
 import SmoothScroll from '@/components/SmoothScroll';
+import CustomCursor from '@/components/CustomCursor';
 import { Suspense } from 'react';
 import { AuthProvider } from '@/context/AuthContext';
 
@@ -25,6 +26,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${outfit.variable} antialiased`} suppressHydrationWarning>
         <SmoothScroll>
+          <CustomCursor />
           <Suspense fallback={null}>
             <ThreeScene />
           </Suspense>
