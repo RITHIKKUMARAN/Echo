@@ -17,8 +17,10 @@ if (process.env.FUNCTIONS_EMULATOR) {
         admin.initializeApp();
     }
 } else {
-    // Production - use default
-    admin.initializeApp();
+    // Production - use default credentials with explicit bucket
+    admin.initializeApp({
+        storageBucket: 'echo-1928rn.firebasestorage.app'
+    });
 }
 
 export const db = admin.firestore();

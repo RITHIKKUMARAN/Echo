@@ -33,6 +33,10 @@ api.interceptors.request.use(async (config) => {
         const token = await user.getIdToken();
         config.headers.Authorization = `Bearer ${token}`;
     }
+    // Remove Content-Type for FormData (axios adds correct boundary automatically)
+    if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
+    }
     return config;
 }, (error) => {
     return Promise.reject(error);

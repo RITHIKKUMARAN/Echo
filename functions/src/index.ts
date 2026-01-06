@@ -16,9 +16,20 @@ const app = express();
 
 // Middleware
 app.use(cors({ origin: true }));
-// Increase payload limits for file uploads (50MB)
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Apply JSON/URL parsers only to non-upload routes
+// (multer needs raw request body for multipart/form-data)
+app.use((req, res, next) => {
+    if (req.path.startsWith('/upload')) {
+        return next();
+    }
+    express.json({ limit: '50mb' })(req, res, next);
+});
+app.use((req, res, next) => {
+    if (req.path.startsWith('/upload')) {
+        return next();
+    }
+    express.urlencoded({ extended: true, limit: '50mb' })(req, res, next);
+});
 
 // Routes
 app.use('/auth', authRoutes);

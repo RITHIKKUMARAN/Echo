@@ -150,9 +150,8 @@ export default function NotebookPage() {
             formData.append('file', file);
             formData.append('courseId', 'default_course_id');
 
-            const response = await api.post('/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            // Let axios auto-detect Content-Type with boundary for multipart
+            const response = await api.post('/upload', formData);
 
             if (response.data.chatId) {
                 setCurrentChatId(response.data.chatId);
