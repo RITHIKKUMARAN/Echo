@@ -21,9 +21,7 @@ const auth = getAuth();
 // API Client
 const api = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/echo-1928rn/us-central1/api',
-    headers: {
-        'Content-Type': 'application/json',
-    },
+    // Note: No default Content-Type - let requests specify their own
 });
 
 // Request Interceptor: Attach Token
@@ -45,7 +43,9 @@ export const apiRequest = async (endpoint: string, method: string, body?: any, t
             method: method,
             url: endpoint,
             data: body,
-            headers: {}
+            headers: {
+                'Content-Type': 'application/json'  // JSON by default
+            }
         };
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`;
