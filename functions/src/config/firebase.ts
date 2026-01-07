@@ -2,23 +2,39 @@ import * as admin from 'firebase-admin';
 import * as path from 'path';
 
 // Initialize Admin SDK
-if (process.env.FUNCTIONS_EMULATOR) {
-    // Running in emulator - use service account for prod access
-    // __dirname in compiled code is 'lib/config/', so we need to go up to 'functions/'
-    const serviceAccount = path.join(__dirname, '../..', 'serviceAccountKey.json');
+// Initialize Admin SDK
+const serviceAccountPath = path.join(__dirname, '../..', 'serviceAccountKey.json');
+const fs = require('fs');
+
+let serviceAccount: any = null;
+
+// Try to load key unconditionally (for both Prod and Emulator)
+if (fs.existsSync(serviceAccountPath)) {
+    try {
+        serviceAccount = require(serviceAccountPath);
+        console.log('🔑 Found serviceAccountKey.json');
+    } catch (e) {
+        console.warn('⚠️ Found key but could not require it');
+    }
+}
+
+if (serviceAccount) {
     try {
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
             storageBucket: 'echo-1928rn.firebasestorage.app'
         });
-        console.log('✅ Admin SDK initialized with service account');
+        console.log('✅ Admin SDK initialized with Service Account Key');
     } catch (err) {
-        console.warn('⚠️ Service account key not found, using default init');
-        admin.initializeApp();
+        // Warning: if app already exists, this might throw.
+        if (!admin.apps.length) admin.initializeApp();
     }
 } else {
-    // Production - use default
-    admin.initializeApp();
+    // Fallback to ADC
+    if (!admin.apps.length) {
+        admin.initializeApp();
+        console.log('✅ Admin SDK initialized with ADC');
+    }
 }
 
 export const db = admin.firestore();

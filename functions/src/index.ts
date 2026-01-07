@@ -16,7 +16,11 @@ const app = express();
 
 // Middleware
 app.use(cors({ origin: true }));
-// Increase payload limits for file uploads (50MB)
+
+// 1. Upload Route - Must be registered BEFORE body parsers to handle raw stream
+app.use('/upload', uploadRoutes);
+
+// 2. Body Parsers - Apply to all remaining routes
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -27,14 +31,24 @@ app.use('/sheets', sheetsRoutes);
 app.use('/users', userRoutes);
 app.use('/notebook', notebookRoutes);
 app.use('/chats', chatRoutes); // Persistent chat history
+app.use('/chat', chatRoutes); // Frontend alias
 app.use('/doubts', doubtRoutes);
 app.use('/sessions', sessionRoutes);
 app.use('/analytics', analyticsRoutes);
-app.use('/upload', uploadRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
     res.send('Campus AI Platform API is running');
+});
+
+// Global Error Handler
+app.use((err: any, req: any, res: any, next: any) => {
+    console.error('🔥 Global Error Handler Caught:', err);
+    res.status(500).json({
+        error: 'Internal Server Error',
+        message: err.message,
+        stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
+    });
 });
 
 // Export the API

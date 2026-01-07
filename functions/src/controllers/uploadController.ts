@@ -2,55 +2,102 @@ import { Request, Response } from 'express';
 import * as admin from 'firebase-admin';
 import { db, storage } from '../config/firebase';
 import { processMaterial } from '../services/ingestionService';
+const Busboy = require('busboy');
 
 export const uploadFile = async (req: Request, res: Response) => {
     try {
-        console.log('=== UPLOAD FILE CALLED ===');
+        console.log('=== UPLOAD FILE CALLED (MANUAL BUSBOY) ===');
 
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file provided' });
+        const busboy = Busboy({ headers: req.headers });
+        const fields: any = {};
+        let fileBuffer: Buffer | null = null;
+
+        interface FileInfo {
+            filename: string;
+            mimeType: string;
         }
+        let fileInfo: FileInfo | null = null;
 
-        const file = req.file;
-        const { courseId } = req.body;
-        const targetCourseId = courseId || 'default_course_id';
-        const fileName = file.originalname;
-        const filePath = `course-materials/${targetCourseId}/${fileName}`;
+        // Parse Request
+        await new Promise<void>((resolve, reject) => {
+            busboy.on('field', (fieldname: string, val: string) => {
+                fields[fieldname] = val;
+            });
 
-        console.log(`Processing upload for ${fileName} to ${targetCourseId}`);
+            busboy.on('file', (fieldname: string, file: any, info: any) => {
+                const { filename, mimeType } = info;
+                console.log(`📎 File stream received: ${filename}`);
 
-        // 1. Upload to Firebase Storage (Server-Side)
-        // Ensure we specify the bucket if not default in emulator
-        const bucket = storage.bucket('echo-1928rn.firebasestorage.app');
-        const fileRef = bucket.file(filePath);
+                const chunks: any[] = [];
+                file.on('data', (data: any) => chunks.push(data));
+                file.on('end', () => {
+                    fileBuffer = Buffer.concat(chunks);
+                    fileInfo = { filename, mimeType };
+                    console.log(`✅ File buffered: ${fileBuffer.length} bytes`);
+                });
+            });
 
-        await fileRef.save(file.buffer, {
-            contentType: file.mimetype,
-            metadata: {
-                contentType: file.mimetype
+            busboy.on('finish', () => {
+                console.log('✅ Busboy finished parsing');
+                resolve();
+            });
+
+            busboy.on('error', (err: any) => {
+                console.error('❌ Busboy error:', err);
+                reject(err);
+            });
+
+            // CRITICAL: Cloud Functions Gen 1 provides rawBody
+            if ((req as any).rawBody) {
+                console.log('🔧 Using req.rawBody for Cloud Functions');
+                busboy.end((req as any).rawBody);
+            } else {
+                console.log('🔧 Piping req stream');
+                req.pipe(busboy);
             }
         });
 
-        console.log('File saved to storage:', filePath);
+        if (!fileBuffer || !fileInfo) {
+            return res.status(400).json({ error: 'No file provided or parsing failed' });
+        }
+
+        const { courseId } = fields;
+        const targetCourseId = courseId || 'default_course_id';
+        const fileName = fileInfo!.filename.replace(/[^a-zA-Z0-9.-]/g, '_'); // Sanitize
+        const filePath = `course-materials/${targetCourseId}/${fileName}`;
+
+        console.log(`Processing upload: ${fileName} → ${targetCourseId}`);
+
+        // 1. Upload to Storage
+        const bucket = storage.bucket('echo-1928rn.firebasestorage.app');
+        const fileRef = bucket.file(filePath);
+
+        await fileRef.save(fileBuffer!, {
+            contentType: fileInfo!.mimeType,
+            resumable: false,
+            metadata: { contentType: fileInfo!.mimeType }
+        });
+
+        console.log('✅ File saved to storage:', filePath);
 
         // 2. Create Firestore Record
         const materialRef = db.collection('courses').doc(targetCourseId).collection('materials').doc();
         await materialRef.set({
-            title: fileName,
+            title: fileInfo!.filename,
+            fileName: fileName,
             filePath: filePath,
-            contentType: file.mimetype,
+            contentType: fileInfo!.mimeType,
             uploadedAt: admin.firestore.FieldValue.serverTimestamp(),
             status: 'processing',
-            size: file.size
+            size: fileBuffer!.length
         });
 
-        console.log('Metadata created:', materialRef.id);
+        console.log('✅ Metadata created:', materialRef.id);
 
-        // 3. Trigger Ingestion Directly (Robustness)
-        // Run in background so we don't block response
-        processMaterial(targetCourseId, materialRef.id, filePath, file.mimetype)
-            .then(() => console.log('Ingestion finished for', materialRef.id))
-            .catch(err => console.error('Ingestion failed for', materialRef.id, err));
+        // 3. Trigger Ingestion (Background)
+        processMaterial(targetCourseId, materialRef.id, filePath, fileInfo!.mimeType)
+            .then(() => console.log('✅ Ingestion finished:', materialRef.id))
+            .catch(err => console.error('❌ Ingestion failed:', materialRef.id, err));
 
         return res.status(201).json({
             message: 'File uploaded and processing started',
@@ -59,7 +106,10 @@ export const uploadFile = async (req: Request, res: Response) => {
         });
 
     } catch (error: any) {
-        console.error('Upload Error:', error);
-        return res.status(500).json({ error: 'Internal Server Error', details: error.message });
+        console.error('❌ Upload Error:', error);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            details: error.message
+        });
     }
 };
