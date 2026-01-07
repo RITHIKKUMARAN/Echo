@@ -8,6 +8,7 @@ import { Search, Send, Library, X, Mic, MicOff, Sparkles, Bot, User, Paperclip, 
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { getAuth } from 'firebase/auth';
 import { firestoreService } from '@/lib/firestoreService';
 import { peersService } from '@/lib/peersService';
 import studyContextService from '@/lib/studyContextService';
@@ -40,6 +41,7 @@ export default function NotebookPage() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const recognitionRef = useRef<any>(null);
+    const auth = getAuth();
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -150,8 +152,24 @@ export default function NotebookPage() {
             formData.append('file', file);
             formData.append('courseId', 'default_course_id');
 
-            // Let axios auto-detect Content-Type with boundary for multipart
-            const response = await api.post('/upload', formData);
+            // Use fetch API to avoid Axios FormData transformation issues
+            const user = auth.currentUser;
+            const token = user ? await user.getIdToken() : null;
+
+            const fetchResponse = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-echo-1928rn.cloudfunctions.net/api'}/upload`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                    // Don't set Content-Type - browser will set it with boundary
+                },
+                body: formData
+            });
+
+            if (!fetchResponse.ok) {
+                throw new Error(`Upload failed: ${fetchResponse.statusText}`);
+            }
+
+            const response = { data: await fetchResponse.json() };
 
             if (response.data.chatId) {
                 setCurrentChatId(response.data.chatId);
